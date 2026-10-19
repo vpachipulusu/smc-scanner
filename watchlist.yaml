@@ -1,0 +1,9 @@
+# Symbols per source. MT5 names are broker-specific (some brokers add suffixes such as
+# ".r" or "m", or call NAS100 "US100"/"USTEC"); use them exactly as Market Watch shows them.
+mt5:
+  - EURUSD
+  - XAUUSD
+  - USTEC    # Nasdaq 100 on MetaQuotes-Demo; other brokers use NAS100 or US100
+  - UK100
+  - BTCUSD   # not offered on MetaQuotes-Demo; logged and skipped there
+csv: []

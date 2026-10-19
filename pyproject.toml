@@ -1,0 +1,64 @@
+[project]
+name = "smc-scanner"
+version = "0.1.0"
+description = "Screens a watchlist for price touching or near fresh order blocks and fair value gaps (read-only, never trades)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.150.0",
+    "metatrader5>=5.0.5000; sys_platform == 'win32'",
+    "numpy>=2.5.4",
+    "pandas>=2",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.3",
+    "rich>=15.0.0",
+    "smartmoneyconcepts==0.0.27",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+smc-scan = "smc_scanner.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/smc_scanner"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.4.0",
+    "pandas-stubs>=3.0.5.260914",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.1",
+    "types-pyyaml>=6.0.12.20260906",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "N"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+[[tool.mypy.overrides]]
+module = ["smartmoneyconcepts.*", "MetaTrader5.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --cov --cov-report=term-missing"
+filterwarnings = ["ignore::DeprecationWarning:starlette.*", "ignore::DeprecationWarning:fastapi.*"]
+
+[tool.coverage.run]
+source = ["smc_scanner"]
+branch = true
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
