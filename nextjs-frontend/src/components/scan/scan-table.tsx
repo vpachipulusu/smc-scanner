@@ -1,4 +1,6 @@
 import { Check, Minus } from 'lucide-react';
+import { ActionPill } from '@/components/common/action-pill';
+import { ConfidenceBar } from '@/components/common/confidence-bar';
 import { StatusPill, type StatusPillVariant } from '@/components/ui/status-pill';
 import {
   Table,
@@ -9,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import type { AiResultOut } from '@/lib/api/analyse';
 import type { ScanRowOut } from '@/lib/api/scan';
 import { cn } from '@/lib/utils';
 
@@ -72,7 +75,60 @@ function ScorePips({ score }: { score: number }) {
   );
 }
 
-export function ScanTable({ rows }: { rows: ReadonlyArray<ScanRowOut> }) {
+/** A scan row, optionally with the AI result the analysis added. */
+export type ScanTableRow = ScanRowOut & { ai?: AiResultOut };
+
+function Setup({ verdict }: { verdict: NonNullable<AiResultOut['verdict']> }) {
+  const parts: string[] = [];
+  if (verdict.quality) parts.push(`Grade ${verdict.quality}`);
+  if (typeof verdict.entry === 'number') parts.push(`Entry ${formatPrice(verdict.entry)}`);
+  if (typeof verdict.stop === 'number') parts.push(`Stop ${formatPrice(verdict.stop)}`);
+  if (verdict.targets && verdict.targets.length > 0) {
+    parts.push(`TP ${verdict.targets.map(formatPrice).join(', ')}`);
+  }
+  if (typeof verdict.risk_reward === 'number') parts.push(`R:R ${verdict.risk_reward.toFixed(2)}`);
+  if (parts.length === 0) return <NoValue />;
+  return (
+    <ul className="space-y-0.5 text-xs tabular-nums">
+      {parts.map((part) => (
+        <li key={part}>{part}</li>
+      ))}
+    </ul>
+  );
+}
+
+/** An empty cell that is still announced, so a row without a verdict reads as "none", not broken. */
+function NoValue() {
+  return (
+    <span className="text-muted-foreground">
+      <span aria-hidden="true">—</span>
+      <span className="sr-only">No verdict</span>
+    </span>
+  );
+}
+
+function AiCells({ ai }: { ai: AiResultOut | undefined }) {
+  const verdict = ai?.verdict ?? null;
+  return (
+    <>
+      <TableCell label="Action">
+        {verdict ? <ActionPill action={verdict.action} /> : <NoValue />}
+      </TableCell>
+      <TableCell label="Confidence">
+        {verdict ? <ConfidenceBar value={verdict.confidence} /> : <NoValue />}
+      </TableCell>
+      <TableCell label="Setup">{verdict ? <Setup verdict={verdict} /> : <NoValue />}</TableCell>
+    </>
+  );
+}
+
+export function ScanTable({
+  rows,
+  showAi = false,
+}: {
+  rows: ReadonlyArray<ScanTableRow>;
+  showAi?: boolean;
+}) {
   return (
     <Table stacked>
       <TableCaption>Instruments touching or near a fresh zone, best first</TableCaption>
@@ -93,6 +149,13 @@ export function ScanTable({ rows }: { rows: ReadonlyArray<ScanRowOut> }) {
           <TableHead numeric>Age</TableHead>
           <TableHead numeric>Touches</TableHead>
           <TableHead>Bar</TableHead>
+          {showAi && (
+            <>
+              <TableHead>Action</TableHead>
+              <TableHead>Confidence</TableHead>
+              <TableHead>Setup</TableHead>
+            </>
+          )}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -149,6 +212,7 @@ export function ScanTable({ rows }: { rows: ReadonlyArray<ScanRowOut> }) {
             <TableCell label="Bar" className="font-mono text-xs">
               {row.bar_time}
             </TableCell>
+            {showAi && <AiCells ai={row.ai} />}
           </TableRow>
         ))}
       </TableBody>

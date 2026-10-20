@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { ScanTable, formatPrice } from '@/components/scan/scan-table';
-import { makeRow } from '../../helpers/fixtures';
+import { makeAnalysedRow, makeRow } from '../../helpers/fixtures';
 
 describe('ScanTable', () => {
   it('renders one row per hit with the instrument and zone', () => {
@@ -78,5 +78,33 @@ describe('formatPrice', () => {
     [0.1 + 0.2, '0.3'],
   ])('formats %s as %s', (value, expected) => {
     expect(formatPrice(value)).toBe(expected);
+  });
+});
+
+describe('ScanTable AI columns', () => {
+  it('has no AI columns unless asked for', () => {
+    render(<ScanTable rows={[makeAnalysedRow()]} />);
+
+    expect(screen.queryByRole('columnheader', { name: 'Action' })).not.toBeInTheDocument();
+    expect(screen.queryByText('BUY')).not.toBeInTheDocument();
+  });
+
+  it('shows "no value" for a verdict without setup numbers', () => {
+    render(
+      <ScanTable
+        showAi
+        rows={[
+          makeAnalysedRow({
+            ai: { status: 'analysed', note: '', verdict: { action: 'HOLD', confidence: 40 } },
+          }),
+          makeRow(),
+        ]}
+      />
+    );
+
+    const [held, plain] = screen.getAllByTestId('scan-row');
+    expect(within(held).getByText('HOLD')).toBeInTheDocument();
+    expect(within(held).getByText('No verdict')).toBeInTheDocument();
+    expect(within(plain).getAllByText('No verdict')).toHaveLength(3);
   });
 });

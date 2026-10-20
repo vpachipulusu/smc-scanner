@@ -1,4 +1,5 @@
 import type { AnalysisOut } from '@/lib/api/analyses';
+import type { AnalysedRowOut } from '@/lib/api/analyse';
 import type { ScanFailureOut, ScanResponse, ScanRowOut } from '@/lib/api/scan';
 
 /** A TOUCHING bullish FVG hit shaped like the API's rows. */
@@ -55,6 +56,27 @@ export function makeAnalysis(overrides: Partial<AnalysisOut> = {}): AnalysisOut 
     attempts: 1,
     status: 'ok',
     verdict: { action: 'BUY', confidence: 72 },
+    ...overrides,
+  };
+}
+
+/** A scan row with an analysed BUY verdict, shaped like POST /analyse rows. */
+export function makeAnalysedRow(overrides: Partial<AnalysedRowOut> = {}): AnalysedRowOut {
+  return {
+    ...ROW,
+    ai: {
+      status: 'analysed',
+      note: '',
+      verdict: {
+        action: 'BUY',
+        confidence: 72,
+        quality: 'A',
+        entry: 1.0975,
+        stop: 1.0955,
+        targets: [1.101, 1.104],
+        risk_reward: 1.75,
+      },
+    },
     ...overrides,
   };
 }
