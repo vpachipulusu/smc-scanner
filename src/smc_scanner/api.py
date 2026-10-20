@@ -12,17 +12,20 @@ Every error body is ``{"success": false, "error": "..."}`` so the generated Type
 client and the frontend's ``callBackend`` see one shape. Sources are ``mt5`` and ``demo``;
 the csv source takes file paths, so it is CLI-only. Scans are serialised with a lock
 because the MT5 connection is process-wide.
+
+Run a single worker: the scan lock, run guard and cooldowns are process-local.
 """
 
 import base64
 import binascii
 import logging
+import math
 import os
 import re
 import secrets
 import threading
 import time
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
 from datetime import datetime
@@ -155,6 +158,8 @@ TELEGRAM_FAILED_MESSAGE = "Telegram rejected the test message"
 RUN_UNAVAILABLE_MESSAGE = "Run setup is invalid; see the server log"
 TELEGRAM_COOLDOWN_MESSAGE = "A test message was sent a moment ago; try again shortly"
 TELEGRAM_TEST_COOLDOWN_SECONDS = 5.0
+RUN_NOW_COOLDOWN_SECONDS = 10.0
+RUN_COOLDOWN_MESSAGE = "This schedule was run a moment ago; try again shortly"
 _OMITTED: Any = None  # default of PATCH fields that are omittable but not nullable
 DEFAULT_SCHEDULE_MIN_SCORE = 2
 DEFAULT_LOGS_LIMIT = 50
@@ -337,13 +342,19 @@ def _allowed_hosts() -> list[str]:
     return [host.strip() for host in raw.split(",") if host.strip()]
 
 
-def _error_response(status_code: int, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status_code, content={"success": False, "error": message})
+def _error_response(
+    status_code: int, message: str, headers: Mapping[str, str] | None = None
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"success": False, "error": message},
+        headers=None if headers is None else dict(headers),
+    )
 
 
 async def _http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
     message = exc.detail if isinstance(exc.detail, str) else "Error"
-    return _error_response(exc.status_code, message)
+    return _error_response(exc.status_code, message, exc.headers)
 
 
 async def _validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -930,6 +941,25 @@ _telegram_test_lock = threading.Lock()
 _telegram_test_at = -TELEGRAM_TEST_COOLDOWN_SECONDS  # monotonic time of the last test message
 
 
+_run_now_lock = threading.Lock()
+_run_now_at: dict[int, float] = {}  # schedule id -> monotonic time of its last run-now
+
+
+def _take_run_now_slot(schedule_id: int) -> None:
+    """429 with ``Retry-After`` when this schedule was run less than the cooldown ago."""
+    with _run_now_lock:
+        now = time.monotonic()
+        for sid in [s for s, at in _run_now_at.items() if now - at >= RUN_NOW_COOLDOWN_SECONDS]:
+            del _run_now_at[sid]  # expired entries, so the map stays small
+        last = _run_now_at.get(schedule_id)
+        if last is not None:
+            wait = max(1, math.ceil(RUN_NOW_COOLDOWN_SECONDS - (now - last)))
+            raise HTTPException(
+                status_code=429, detail=RUN_COOLDOWN_MESSAGE, headers={"Retry-After": str(wait)}
+            )
+        _run_now_at[schedule_id] = now
+
+
 def _take_telegram_test_slot() -> None:
     """429 when a test message went out less than the cooldown ago, so a loop cannot burn the
     bot's rate budget that real alerts share."""
@@ -1105,6 +1135,16 @@ def delete_schedule(schedule_id: ScheduleId, _: InternalKeyDep) -> DeleteRespons
     responses={
         **SCHEDULE_ERRORS,
         409: {"model": ErrorResponse, "description": "This schedule or a scan is already running"},
+        429: {
+            "model": ErrorResponse,
+            "description": "This schedule was run a moment ago; see the Retry-After header",
+            "headers": {
+                "Retry-After": {
+                    "description": "Seconds until this schedule may be run again",
+                    "schema": {"type": "integer"},
+                }
+            },
+        },
         503: {"model": ErrorResponse, "description": "Schedule database or run setup unavailable"},
     },
 )
@@ -1114,9 +1154,14 @@ def run_schedule_now(
     """Run the schedule once now, waiting for the result.
 
     Takes the same scan lock as ``/scan`` and never queues behind it: 409 when this schedule is
-    already running or a scan holds the lock. The error text of a failed run is in the job log.
+    already running or a scan holds the lock. A schedule can be run again only after a cooldown
+    (429 with ``Retry-After``).
+
+    A run that fails (scan or AI error) still answers 200 with ``status`` "failed": the client
+    must check ``status``, not just the HTTP code. The error text is in the job log only.
     """
     schedule = _existing(_open_schedules(), schedule_id)
+    _take_run_now_slot(schedule_id)
     deps = replace(make_deps(), lock_timeout=RUN_NOW_LOCK_TIMEOUT_SECONDS)
     report = run_schedule(schedule, deps)
     if report.status == "already_running":
@@ -1163,8 +1208,9 @@ def list_schedule_logs(
 @app.post(
     "/telegram/test",
     response_model=TelegramTestResponse,
-    tags=["schedules"],
+    tags=["telegram"],
     responses={
+        422: {"model": ErrorResponse, "description": "Invalid chat id, or none to send to"},
         502: {"model": ErrorResponse, "description": "Telegram did not accept the message"},
         503: {"model": ErrorResponse, "description": "TELEGRAM_BOT_TOKEN is not set"},
         429: {"model": ErrorResponse, "description": "Another test message was sent just now"},

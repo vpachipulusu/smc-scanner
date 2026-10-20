@@ -1418,6 +1418,10 @@ export type RunScheduleNowErrors = {
      */
     422: ErrorResponse;
     /**
+     * This schedule was run a moment ago; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
      * Internal server error
      */
     500: ErrorResponse;
@@ -1521,7 +1525,7 @@ export type SendTelegramTestErrors = {
      */
     401: ErrorResponse;
     /**
-     * Invalid request
+     * Invalid chat id, or none to send to
      */
     422: ErrorResponse;
     /**

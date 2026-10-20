@@ -119,7 +119,11 @@ export const updateSchedule = <ThrowOnError extends boolean = false>(options: Op
  * Run the schedule once now, waiting for the result.
  *
  * Takes the same scan lock as ``/scan`` and never queues behind it: 409 when this schedule is
- * already running or a scan holds the lock. The error text of a failed run is in the job log.
+ * already running or a scan holds the lock. A schedule can be run again only after a cooldown
+ * (429 with ``Retry-After``).
+ *
+ * A run that fails (scan or AI error) still answers 200 with ``status`` "failed": the client
+ * must check ``status``, not just the HTTP code. The error text is in the job log only.
  */
 export const runScheduleNow = <ThrowOnError extends boolean = false>(options: Options<RunScheduleNowData, ThrowOnError>) => (options.client ?? client).post<RunScheduleNowResponses, RunScheduleNowErrors, ThrowOnError>({ url: '/schedules/{schedule_id}/run', ...options });
 

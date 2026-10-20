@@ -104,3 +104,17 @@ def test_schedule_update_is_nullable_only_for_the_chat_id() -> None:
         if "anyOf" in prop and {"type": "null"} in prop["anyOf"]
     }
     assert nullable == {"telegram_chat_id"}
+
+
+def test_run_now_documents_the_failed_run_and_the_cooldown() -> None:
+    schema = json.loads(schema_text())
+    run = schema["paths"]["/schedules/{schedule_id}/run"]["post"]
+    assert "status" in run["description"]
+    assert "failed" in run["description"]
+    assert "Retry-After" in run["responses"]["429"]["headers"]
+
+
+def test_telegram_test_is_tagged_and_documents_422() -> None:
+    post = json.loads(schema_text())["paths"]["/telegram/test"]["post"]
+    assert post["tags"] == ["telegram"]
+    assert set(post["responses"]) >= {"200", "422", "429", "502", "503"}

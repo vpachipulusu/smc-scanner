@@ -16,6 +16,7 @@ from smc_scanner.schedule.joblog import (
     JobLogEntry,
     SqliteJobLogStore,
     entry_from_report,
+    sanitise_error,
 )
 from smc_scanner.schedule.runner import RunDeps, RunReport, run_schedule
 from smc_scanner.schedule.store import Schedule
@@ -381,3 +382,11 @@ def test_run_without_an_id_records_nothing(tmp_path: Path) -> None:
         run_schedule(Schedule("s", "demo", "1h", ("EURUSD",), "1h"), _recording(deps, store))
 
     assert store.list_entries() == []
+
+
+def test_sanitise_error_redacts_a_full_length_bot_token() -> None:
+    token = "123456789:" + "AbC_dEf-" * 5
+    text = sanitise_error(f"HTTPError: https://api.telegram.org/bot{token}/sendMessage and {token}")
+
+    assert token not in text
+    assert "AbC_dEf" not in text

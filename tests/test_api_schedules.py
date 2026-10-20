@@ -35,6 +35,7 @@ def db_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     path = tmp_path / "smc.db"
     monkeypatch.setenv("SMC_DB_PATH", str(path))
     monkeypatch.delenv("SMC_INTERNAL_KEY", raising=False)
+    api._run_now_at.clear()
     yield path
     app.dependency_overrides.clear()
 
@@ -297,6 +298,37 @@ def test_run_now_is_409_when_a_scan_holds_the_lock(db_path: Path) -> None:
 
     assert response.status_code == 409
     assert response.json() == {"success": False, "error": "A scan is already in progress"}
+
+
+def test_run_now_again_within_the_cooldown_is_429_with_retry_after(db_path: Path) -> None:
+    first, other = _create(), _create(name="other")
+    _use_deps(_fake_deps(db_path))
+
+    assert client.post(f"/schedules/{first['id']}/run").status_code == 200
+    again = client.post(f"/schedules/{first['id']}/run")
+    elsewhere = client.post(f"/schedules/{other['id']}/run")
+
+    assert again.status_code == 429
+    assert again.json() == {"success": False, "error": api.RUN_COOLDOWN_MESSAGE}
+    assert 1 <= int(again.headers["Retry-After"]) <= api.RUN_NOW_COOLDOWN_SECONDS
+    assert elsewhere.status_code == 200
+
+
+def test_run_now_is_allowed_again_after_the_cooldown(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = _create()
+    _use_deps(_fake_deps(db_path))
+    monkeypatch.setattr(api, "RUN_NOW_COOLDOWN_SECONDS", 0.0)
+
+    assert client.post(f"/schedules/{created['id']}/run").status_code == 200
+    assert client.post(f"/schedules/{created['id']}/run").status_code == 200
+    assert api._run_now_at == {created["id"]: api._run_now_at[created["id"]]}
+
+
+def test_a_missing_schedule_does_not_take_a_cooldown_slot() -> None:
+    assert client.post("/schedules/9/run").status_code == 404
+    assert api._run_now_at == {}
 
 
 def test_run_now_on_a_stopping_service_is_503(db_path: Path) -> None:

@@ -1179,7 +1179,7 @@
           "schedules"
         ],
         "summary": "Run Schedule Now",
-        "description": "Run the schedule once now, waiting for the result.\n\nTakes the same scan lock as ``/scan`` and never queues behind it: 409 when this schedule is\nalready running or a scan holds the lock. The error text of a failed run is in the job log.",
+        "description": "Run the schedule once now, waiting for the result.\n\nTakes the same scan lock as ``/scan`` and never queues behind it: 409 when this schedule is\nalready running or a scan holds the lock. A schedule can be run again only after a cooldown\n(429 with ``Retry-After``).\n\nA run that fails (scan or AI error) still answers 200 with ``status`` \"failed\": the client\nmust check ``status``, not just the HTTP code. The error text is in the job log only.",
         "operationId": "run_schedule_now",
         "parameters": [
           {
@@ -1273,6 +1273,24 @@
           },
           "409": {
             "description": "This schedule or a scan is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "This schedule was run a moment ago; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until this schedule may be run again",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1417,7 +1435,7 @@
     "/telegram/test": {
       "post": {
         "tags": [
-          "schedules"
+          "telegram"
         ],
         "summary": "Send Telegram Test",
         "description": "Send a fixed test message to ``chat_id`` (default ``TELEGRAM_CHAT_ID``). The token is read\nfrom the environment only and never appears in a response or a log.",
@@ -1479,7 +1497,7 @@
             }
           },
           "422": {
-            "description": "Invalid request",
+            "description": "Invalid chat id, or none to send to",
             "content": {
               "application/json": {
                 "schema": {
