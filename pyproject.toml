@@ -18,6 +18,11 @@ dependencies = [
 [project.scripts]
 smc-scan = "smc_scanner.cli:main"
 
+[project.optional-dependencies]
+ai = [
+    "anthropic>=0.125,<1",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -27,6 +32,7 @@ packages = ["src/smc_scanner"]
 
 [dependency-groups]
 dev = [
+    "anthropic>=0.125,<1",
     "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pandas-stubs>=3.0.5.260914",
