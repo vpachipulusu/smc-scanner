@@ -21,7 +21,7 @@ export const DEFAULT_MIN_SCORE = 2;
 export const MAX_FIELD_LENGTH = 2000;
 
 const SYMBOL_PATTERN = /^[A-Za-z0-9._#@-]{1,32}$/;
-const CHAT_ID_PATTERN = /^(?:-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$/;
+export const CHAT_ID_PATTERN = /^(?:-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$/;
 const INTEGER_PATTERN = /^\d{1,3}$/;
 const DECIMAL_PATTERN = /^\d{1,3}(?:\.\d{1,4})?$/;
 const SYMBOL_SEPARATOR = /[\s,;]+/;

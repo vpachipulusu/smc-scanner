@@ -12,10 +12,9 @@ const LINKS: readonly NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Scan', href: '/scan' },
   { label: 'Analyses', href: '/analyses' },
+  { label: 'Automation', href: '/automation' },
+  { label: 'Settings', href: '/settings' },
 ];
-
-/** Pages that are not built yet. Shown, but not links, so nobody lands on a 404. */
-const SOON: readonly string[] = ['Automation', 'Settings'];
 
 const ITEM_CLASS =
   'inline-flex min-h-10 items-center rounded-md px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
@@ -49,23 +48,6 @@ export function SiteNav() {
             </li>
           );
         })}
-        {SOON.map((label) => (
-          <li key={label}>
-            <span
-              aria-disabled="true"
-              className={cn(ITEM_CLASS, 'cursor-not-allowed gap-1.5 text-muted-foreground')}
-            >
-              {label}
-              <span className="sr-only"> (coming soon)</span>
-              <span
-                aria-hidden="true"
-                className="rounded-full bg-secondary px-1.5 py-0.5 text-[0.6875rem] font-semibold uppercase leading-none text-foreground"
-              >
-                Soon
-              </span>
-            </span>
-          </li>
-        ))}
       </ul>
       <div className="ml-auto">
         <ThemeToggle />
