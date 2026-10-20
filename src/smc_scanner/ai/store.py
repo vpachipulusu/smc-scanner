@@ -167,7 +167,6 @@ class AnalysisStore(Protocol):
     def list_recent(self, limit: int) -> list[AnalysisRecord]: ...
 
 
-
 class AnalysisReader(Protocol):
     """Read side used by the API: one record by id, and a filtered, keyset-paged list."""
 
