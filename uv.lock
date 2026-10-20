@@ -666,6 +666,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "metatrader5", marker = "sys_platform == 'win32'" },
     { name = "numpy" },
     { name = "pandas" },
@@ -684,7 +685,6 @@ ai = [
 [package.dev-dependencies]
 dev = [
     { name = "anthropic" },
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pandas-stubs" },
     { name = "pytest" },
@@ -697,6 +697,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", marker = "extra == 'ai'", specifier = ">=0.125,<1" },
     { name = "fastapi", specifier = ">=0.150.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "metatrader5", marker = "sys_platform == 'win32'", specifier = ">=5.0.5000" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pandas", specifier = ">=2" },
@@ -711,7 +712,6 @@ provides-extras = ["ai"]
 [package.metadata.requires-dev]
 dev = [
     { name = "anthropic", specifier = ">=0.125,<1" },
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "mypy", specifier = ">=2.4.0" },
     { name = "pandas-stubs", specifier = ">=3.0.5.260914" },
     { name = "pytest", specifier = ">=9.1.1" },
