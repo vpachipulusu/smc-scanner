@@ -5,6 +5,306 @@ export type ClientOptions = {
 };
 
 /**
+ * AiResultOut
+ *
+ * What the analyst did with one row: its status, the verdict if there is one, a short note.
+ */
+export type AiResultOut = {
+    /**
+     * Status
+     */
+    status: 'analysed' | 'skipped_low_score' | 'skipped_cap' | 'skipped_duplicate' | 'skipped_failed_recently' | 'failed';
+    verdict: AiVerdict | null;
+    /**
+     * Note
+     */
+    note: string;
+};
+
+/**
+ * AiVerdict
+ *
+ * Validated verdict. `risk_reward` is computed locally, never taken from the model.
+ */
+export type AiVerdict = {
+    /**
+     * Schema Version
+     */
+    schema_version?: number;
+    /**
+     * Action
+     */
+    action: 'BUY' | 'SELL' | 'HOLD';
+    /**
+     * Confidence
+     */
+    confidence: number;
+    /**
+     * Quality
+     */
+    quality?: 'A' | 'B' | 'C' | null;
+    /**
+     * Entry
+     */
+    entry?: number | null;
+    /**
+     * Stop
+     */
+    stop?: number | null;
+    /**
+     * Targets
+     */
+    targets?: Array<number>;
+    /**
+     * Risk Reward
+     */
+    risk_reward?: number | null;
+    /**
+     * Invalidation
+     */
+    invalidation?: number | null;
+    /**
+     * Reasons
+     */
+    reasons?: Array<string>;
+    /**
+     * Summary
+     */
+    summary?: string;
+    /**
+     * Downgraded
+     */
+    downgraded?: boolean;
+    /**
+     * Downgrade Reason
+     */
+    downgrade_reason?: string | null;
+};
+
+/**
+ * AnalyseRequest
+ *
+ * The ``/scan`` parameters as a JSON body, plus the analyst's knobs.
+ */
+export type AnalyseRequest = {
+    /**
+     * Source
+     */
+    source?: 'mt5' | 'demo';
+    /**
+     * Tf
+     */
+    tf?: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Symbols
+     */
+    symbols?: Array<string> | null;
+    /**
+     * Bars
+     */
+    bars?: number;
+    /**
+     * Swing
+     */
+    swing?: number;
+    /**
+     * Near
+     */
+    near?: number;
+    /**
+     * All Touches
+     */
+    all_touches?: boolean;
+    /**
+     * Provider
+     */
+    provider?: 'claude' | null;
+    /**
+     * Min Score
+     */
+    min_score?: number;
+    /**
+     * Max Rows
+     */
+    max_rows?: number;
+};
+
+/**
+ * AnalyseResponse
+ */
+export type AnalyseResponse = {
+    /**
+     * Source
+     */
+    source: 'mt5' | 'demo';
+    /**
+     * Tf
+     */
+    tf: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Rows
+     */
+    rows: Array<AnalysedRowOut>;
+    /**
+     * Failures
+     */
+    failures: Array<ScanFailureOut>;
+};
+
+/**
+ * AnalysedRowOut
+ *
+ * A scan row plus its AI result. A subclass rather than a nullable field on ``ScanRowOut``,
+ * which ``/scan`` also returns and where it would always be null.
+ */
+export type AnalysedRowOut = {
+    /**
+     * Instrument
+     */
+    instrument: string;
+    /**
+     * Status
+     */
+    status: 'TOUCHING' | 'NEAR';
+    /**
+     * Zone
+     */
+    zone: string;
+    /**
+     * Zone Low
+     */
+    zone_low: number;
+    /**
+     * Zone High
+     */
+    zone_high: number;
+    /**
+     * Price
+     */
+    price: number;
+    /**
+     * Dist Atr
+     */
+    dist_atr: number;
+    /**
+     * Bias
+     */
+    bias: 'bullish' | 'bearish' | 'range';
+    /**
+     * In Ote
+     */
+    in_ote: boolean;
+    /**
+     * Trendline Ok
+     */
+    trendline_ok: boolean;
+    /**
+     * Ob Fvg
+     */
+    ob_fvg: boolean;
+    /**
+     * Score
+     */
+    score: number;
+    /**
+     * Zone Age
+     */
+    zone_age: number;
+    /**
+     * Prior Touches
+     */
+    prior_touches: number;
+    /**
+     * Bar Time
+     */
+    bar_time: string;
+    ai: AiResultOut;
+};
+
+/**
+ * AnalysisOut
+ *
+ * One stored analysis. The context, token counts and error text stay in the database.
+ */
+export type AnalysisOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Symbol
+     */
+    symbol: string;
+    /**
+     * Tf
+     */
+    tf: string;
+    /**
+     * Zone Kind
+     */
+    zone_kind: string;
+    /**
+     * Zone
+     */
+    zone: string;
+    /**
+     * Zone Low
+     */
+    zone_low: number;
+    /**
+     * Zone High
+     */
+    zone_high: number;
+    /**
+     * Bar Time
+     */
+    bar_time: string;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Prompt Version
+     */
+    prompt_version: string;
+    /**
+     * Attempts
+     */
+    attempts: number;
+    /**
+     * Status
+     */
+    status: 'ok' | 'failed';
+    verdict: AiVerdict | null;
+};
+
+/**
+ * AnalysisPage
+ */
+export type AnalysisPage = {
+    /**
+     * Items
+     */
+    items: Array<AnalysisOut>;
+    /**
+     * Next Cursor
+     */
+    next_cursor?: string | null;
+};
+
+/**
  * ConfigResponse
  *
  * What the scan form needs: choices, defaults, limits and the watchlist per source.
@@ -369,3 +669,166 @@ export type ScanResponses = {
 };
 
 export type ScanResponse2 = ScanResponses[keyof ScanResponses];
+
+export type AnalyseData = {
+    body: AnalyseRequest;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/analyse';
+};
+
+export type AnalyseErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * The AI provider failed for the whole run
+     */
+    502: ErrorResponse;
+    /**
+     * Nothing loaded, AI disabled or no database
+     */
+    503: ErrorResponse;
+};
+
+export type AnalyseError = AnalyseErrors[keyof AnalyseErrors];
+
+export type AnalyseResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalyseResponse;
+};
+
+export type AnalyseResponse2 = AnalyseResponses[keyof AnalyseResponses];
+
+export type ListAnalysesData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Symbol
+         */
+        symbol?: string | null;
+        /**
+         * Action
+         */
+        action?: 'BUY' | 'SELL' | 'HOLD' | null;
+        /**
+         * Min Confidence
+         */
+        min_confidence?: number | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Cursor
+         */
+        cursor?: string | null;
+    };
+    url: '/analyses';
+};
+
+export type ListAnalysesErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * No symbol could be loaded
+     */
+    503: ErrorResponse;
+};
+
+export type ListAnalysesError = ListAnalysesErrors[keyof ListAnalysesErrors];
+
+export type ListAnalysesResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisPage;
+};
+
+export type ListAnalysesResponse = ListAnalysesResponses[keyof ListAnalysesResponses];
+
+export type GetAnalysisData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Analysis Id
+         */
+        analysis_id: number;
+    };
+    query?: never;
+    url: '/analyses/{analysis_id}';
+};
+
+export type GetAnalysisErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No analysis with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * No symbol could be loaded
+     */
+    503: ErrorResponse;
+};
+
+export type GetAnalysisError = GetAnalysisErrors[keyof GetAnalysisErrors];
+
+export type GetAnalysisResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisOut;
+};
+
+export type GetAnalysisResponse = GetAnalysisResponses[keyof GetAnalysisResponses];
