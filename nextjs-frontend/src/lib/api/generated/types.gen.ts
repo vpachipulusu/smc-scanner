@@ -326,6 +326,14 @@ export type ConfigResponse = {
     watchlist: {
         [key: string]: Array<string>;
     };
+    /**
+     * Ai Enabled
+     */
+    ai_enabled: boolean;
+    /**
+     * Telegram Enabled
+     */
+    telegram_enabled: boolean;
 };
 
 /**

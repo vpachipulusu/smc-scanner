@@ -14,11 +14,9 @@ export type AnalyseState =
 export const IDLE_ANALYSE_STATE: AnalyseState = { status: 'idle' };
 
 /**
- * Whether the API says an AI provider key is configured. `/config` does not carry the flag in
- * the generated client yet, so an absent or non-boolean `ai_enabled` counts as available and a
- * missing key surfaces as the fixed 503 message when the analysis is run.
+ * Whether the API says an AI provider key is configured. A config that could not be loaded
+ * leaves the button enabled: a missing key then surfaces as the fixed 503 message on run.
  */
 export function aiAvailable(config: ConfigResponse | null): boolean {
-  const flag = config !== null && 'ai_enabled' in config ? config.ai_enabled : undefined;
-  return flag !== false;
+  return config === null || config.ai_enabled !== false;
 }

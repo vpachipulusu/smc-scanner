@@ -2180,6 +2180,14 @@
             },
             "type": "object",
             "title": "Watchlist"
+          },
+          "ai_enabled": {
+            "type": "boolean",
+            "title": "Ai Enabled"
+          },
+          "telegram_enabled": {
+            "type": "boolean",
+            "title": "Telegram Enabled"
           }
         },
         "type": "object",
@@ -2188,7 +2196,9 @@
           "timeframes",
           "defaults",
           "limits",
-          "watchlist"
+          "watchlist",
+          "ai_enabled",
+          "telegram_enabled"
         ],
         "title": "ConfigResponse",
         "description": "What the scan form needs: choices, defaults, limits and the watchlist per source."

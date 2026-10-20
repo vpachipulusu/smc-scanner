@@ -11,6 +11,8 @@ const CONFIG: ConfigResponse = {
   defaults: { source: 'mt5', tf: '1h', bars: 500, swing: 10, near: 0.5 },
   limits: { min_bars: 15, max_bars: 5000, max_swing: 100, max_near: 5, max_symbols: 50 },
   watchlist: { mt5: ['EURUSD', 'USTEC'], demo: ['EURUSD'] },
+  ai_enabled: true,
+  telegram_enabled: true,
 };
 
 const DEFAULT_PARAMS: ScanPageParams = { query: DEFAULTS, every: 0 };

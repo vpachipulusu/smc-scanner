@@ -379,6 +379,8 @@ class ConfigResponse(BaseModel):
     defaults: ScanDefaults
     limits: ScanLimits
     watchlist: dict[str, list[str]]
+    ai_enabled: bool  # an AI provider key is set; only the flag, never the key or its name
+    telegram_enabled: bool  # a Telegram bot token is set; only the flag
 
 
 # --- app -------------------------------------------------------------------------------
@@ -579,6 +581,11 @@ def _watchlist_symbols(source: ApiSource) -> list[str]:
         return []
 
 
+def _ai_key_configured() -> bool:
+    """Whether the AI provider key is set. Shared by /config and the 503 detail of /analyse."""
+    return bool(os.environ.get(API_KEY_ENV, "").strip())
+
+
 @app.get("/config", response_model=ConfigResponse, tags=["scanner"])
 def config(_: InternalKeyDep) -> ConfigResponse:
     """Choices, defaults and limits for the scan form, plus the watchlist per source."""
@@ -600,6 +607,8 @@ def config(_: InternalKeyDep) -> ConfigResponse:
             max_symbols=MAX_SYMBOLS,
         ),
         watchlist={source: _watchlist_symbols(source) for source in API_SOURCES},
+        ai_enabled=_ai_key_configured(),
+        telegram_enabled=bool(telegram_settings_from_env()[0]),
     )
 
 
@@ -684,7 +693,7 @@ def _build_provider() -> AiProvider:
         return make_provider(AI_PROVIDER_NAME)
     except AiError as exc:
         log.error("AI analysis unavailable: %s", exc)
-        if not os.environ.get(API_KEY_ENV, "").strip():
+        if not _ai_key_configured():
             detail = f"AI analysis is disabled: {API_KEY_ENV} is not set"
         else:
             detail = AI_UNAVAILABLE_MESSAGE

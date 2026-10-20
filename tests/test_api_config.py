@@ -26,6 +26,31 @@ def test_config_lists_choices_defaults_limits_and_watchlist() -> None:
     assert isinstance(body["watchlist"]["mt5"], list)
 
 
+def test_config_reports_ai_and_telegram_flags_without_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    default = client.get("/config").json()
+    assert default["ai_enabled"] is False and default["telegram_enabled"] is False
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret-value")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:tok-secret")
+
+    configured = client.get("/config")
+
+    assert configured.json()["ai_enabled"] is True
+    assert configured.json()["telegram_enabled"] is True
+    assert "secret" not in configured.text
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "   ")
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+
+    unconfigured = client.get("/config").json()
+    assert unconfigured["ai_enabled"] is False
+    assert unconfigured["telegram_enabled"] is False
+
+
 def test_internal_key_is_required_only_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(INTERNAL_KEY_ENV, "s3cret")
 
