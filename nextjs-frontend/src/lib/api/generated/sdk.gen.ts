@@ -48,6 +48,12 @@ export const scan = <ThrowOnError extends boolean = false>(options?: Options<Sca
  * The scan runs under the scan lock, which is released before any provider call. The
  * analysis phase is serialised by its own lock, so concurrent identical runs queue and the
  * second one finds the first one's verdicts instead of calling the provider again.
+ *
+ * 429 when the daily AI budget is used up (``AI_MAX_CALLS_PER_DAY`` / ``AI_MAX_COST_PER_DAY``)
+ * or the endpoint is rate limited; ``Retry-After`` says when to try again. Hits already
+ * analysed are served from the database even then, since they need no call. A budget refusal
+ * comes when a call is needed: rows analysed before it stay in the database (read them from
+ * ``GET /analyses``) but are not in the 429 body.
  */
 export const analyse = <ThrowOnError extends boolean = false>(options: Options<AnalyseData, ThrowOnError>) => (options.client ?? client).post<AnalyseResponses, AnalyseErrors, ThrowOnError>({
     url: '/analyse',
