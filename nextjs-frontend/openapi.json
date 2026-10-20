@@ -320,6 +320,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many scans; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -330,7 +348,7 @@
           "analyses"
         ],
         "summary": "Analyse",
-        "description": "Scan, then ask the AI about the best hits; every row comes back with its AI result.\n\nThe scan runs under the scan lock, which is released before any provider call. The\nanalysis phase is serialised by its own lock, so concurrent identical runs queue and the\nsecond one finds the first one's verdicts instead of calling the provider again.",
+        "description": "Scan, then ask the AI about the best hits; every row comes back with its AI result.\n\nThe scan runs under the scan lock, which is released before any provider call. The\nanalysis phase is serialised by its own lock, so concurrent identical runs queue and the\nsecond one finds the first one's verdicts instead of calling the provider again.\n\n429 when the daily AI budget is used up (``AI_MAX_CALLS_PER_DAY`` / ``AI_MAX_COST_PER_DAY``)\nor the endpoint is rate limited; ``Retry-After`` says when to try again. Hits already\nanalysed are served from the database even then, since they need no call. A budget refusal\ncomes when a call is needed: rows analysed before it stay in the database (read them from\n``GET /analyses``) but are not in the 429 body.",
         "operationId": "analyse",
         "parameters": [
           {
@@ -402,7 +420,25 @@
             }
           },
           "503": {
-            "description": "Nothing loaded, AI disabled or no database",
+            "description": "Nothing loaded, AI disabled, no database or invalid budget settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited, or the daily AI budget is used up; see Retry-After",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

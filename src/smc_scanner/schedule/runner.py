@@ -70,6 +70,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from smc_scanner.ai.analyst import AnalysisResult, HitInputs, analyse_hits, hit_inputs_from_ohlc
+from smc_scanner.ai.budget import BudgetExceededError, BudgetGuard
 from smc_scanner.ai.providers import AiProvider
 from smc_scanner.ai.store import AnalysisKey, AnalysisStore, StoreError
 from smc_scanner.ai_cli import FrameCache
@@ -163,15 +164,17 @@ def default_analyse(
     provider: AiProvider,
     store: AnalysisStore,
     clock: Clock,
+    budget: BudgetGuard | None = None,
 ) -> list[AnalysisResult]:
-    """``analyse_hits`` over the scanned frames, gated by the schedule's ``min_score``."""
+    """``analyse_hits`` over the scanned frames, gated by the schedule's ``min_score`` and,
+    when given, the daily AI budget (``BudgetExceededError`` ends the run, see ``_run``)."""
 
     def source(row: ScanRow) -> HitInputs:
         return hit_inputs_from_ohlc(data.frames[row.instrument], row, data.options)
 
     return analyse_hits(
         data.rows, source, provider, store, timeframe=schedule.tf, min_score=schedule.min_score,
-        now=clock,
+        now=clock, budget=budget,
     )  # fmt: skip
 
 
@@ -383,6 +386,11 @@ def _run(schedule: Schedule, deps: RunDeps) -> RunReport:
     try:  # from here on no lock is held: the model and Telegram can be slow
         provider = deps.provider_factory()
         results = deps.analyse(scanned, schedule, provider, deps.analysis_store, deps.clock)
+    except BudgetExceededError as exc:  # a daily cap, not a fault: logged as the job-log reason
+        log.warning("schedule %s: run skipped, %s", sid, exc)
+        return RunReport(
+            sid, "failed", rows=len(scanned.rows), errors=(f"budget: {exc}"[:MAX_ERROR_CHARS],)
+        )
     except Exception as exc:
         log.error("schedule %s: analysis failed: %s", sid, type(exc).__name__)
         return RunReport(sid, "failed", rows=len(scanned.rows), errors=(_short(exc),))

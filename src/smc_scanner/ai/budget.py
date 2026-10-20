@@ -27,8 +27,8 @@ TOKENS_PER_PRICE_UNIT: Final = 1_000_000
 DEFAULT_RESERVATION_TTL: Final = timedelta(minutes=10)
 
 # Rough USD per million tokens (input, output), matched by model-name prefix. Estimates only:
-# check the provider's price list before relying on them for billing. Kept here so the module
-# stays standalone; the table in ai/analyst.py should be unified with it when this is wired in.
+# check the provider's price list before relying on them for billing. This is the one price
+# table: ai/analyst.py prices stored analyses with ``lookup_price`` too.
 PRICE_PER_MTOK: Final[Mapping[str, tuple[float, float]]] = MappingProxyType(
     {
         "claude-opus-5-5": (5.0, 25.0),
@@ -137,14 +137,19 @@ def limits_from_env(env: Mapping[str, str] | None = None) -> BudgetLimits:
     )
 
 
+def lookup_price(model: str) -> tuple[float, float] | None:
+    """(input, output) USD per million tokens by longest model-name prefix, or None if unpriced."""
+    matches = [name for name in PRICE_PER_MTOK if model.startswith(name)]
+    if not matches:
+        return None
+    return PRICE_PER_MTOK[max(matches, key=len)]
+
+
 def estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float:
     """USD estimate from token counts. An unpriced model gets the dearest known rate."""
     if type(tokens_in) is not int or type(tokens_out) is not int or tokens_in < 0 or tokens_out < 0:
         raise ValueError("tokens must be non-negative integers")
-    price_in, price_out = FALLBACK_PRICE
-    matches = [name for name in PRICE_PER_MTOK if model.startswith(name)]
-    if matches:
-        price_in, price_out = PRICE_PER_MTOK[max(matches, key=len)]  # longest prefix wins
+    price_in, price_out = lookup_price(model) or FALLBACK_PRICE
     return (tokens_in * price_in + tokens_out * price_out) / TOKENS_PER_PRICE_UNIT
 
 
