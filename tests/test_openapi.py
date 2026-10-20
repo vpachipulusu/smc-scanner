@@ -16,7 +16,14 @@ def test_operation_ids_are_plain_function_names() -> None:
     operation_ids = {
         operation["operationId"] for path in schema["paths"].values() for operation in path.values()
     }
-    assert operation_ids == {"health", "config", "scan"}
+    assert operation_ids == {
+        "health",
+        "config",
+        "scan",
+        "analyse",
+        "list_analyses",
+        "get_analysis",
+    }
 
 
 def test_error_bodies_are_documented_with_the_envelope() -> None:
@@ -25,6 +32,19 @@ def test_error_bodies_are_documented_with_the_envelope() -> None:
     assert set(scan) >= {"200", "401", "422", "503"}
     error_schema = schema["components"]["schemas"]["ErrorResponse"]
     assert set(error_schema["properties"]) == {"success", "error"}
+
+
+def test_analyses_endpoints_document_their_errors_and_limits() -> None:
+    schema = json.loads(schema_text())
+    paths = schema["paths"]
+    assert set(paths["/analyse"]["post"]["responses"]) >= {"200", "401", "422", "502", "503"}
+    assert set(paths["/analyses/{analysis_id}"]["get"]["responses"]) >= {"200", "404"}
+    limit = next(p for p in paths["/analyses"]["get"]["parameters"] if p["name"] == "limit")
+    assert limit["schema"]["maximum"] == 200
+    models = schema["components"]["schemas"]
+    assert models["AiResultOut"]["properties"]["note"]["maxLength"] > 0
+    assert models["AiVerdict"]["properties"]["summary"]["maxLength"] > 0
+    assert models["AnalyseRequest"]["properties"]["provider"]["anyOf"][0]["const"] == "claude"
 
 
 def test_export_writes_lf_json(tmp_path: Path) -> None:

@@ -14,23 +14,43 @@ the csv source takes file paths, so it is CLI-only. Scans are serialised with a 
 because the MT5 connection is process-wide.
 """
 
+import base64
+import binascii
 import logging
 import os
 import re
 import secrets
 import threading
+from collections.abc import Callable
 from typing import Annotated, Any, Literal
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from smc_scanner import __version__
+from smc_scanner.ai.analyst import (
+    DEFAULT_MAX_ROWS,
+    DEFAULT_MIN_SCORE,
+    AnalysisResult,
+    analyse_hits,
+    hit_inputs_from_ohlc,
+)
+from smc_scanner.ai.analyst import Status as AiStatus
+from smc_scanner.ai.providers import API_KEY_ENV, AiError, AiProvider, make_provider
+from smc_scanner.ai.store import (
+    AnalysisRecord,
+    SqliteAnalysisStore,
+    StoreError,
+    db_path_from_env,
+)
+from smc_scanner.ai.verdict import CONFIDENCE_MAX, CONFIDENCE_MIN, Action, AiVerdict
+from smc_scanner.ai_cli import MAX_NOTE_CHARS, SKIP_NOTES, FrameCache
 from smc_scanner.config import (
     DEFAULT_BARS,
     DEFAULT_NEAR_ATR,
@@ -64,8 +84,27 @@ INVALID_REQUEST_MESSAGE = "Invalid request"
 INTERNAL_ERROR_MESSAGE = "Internal server error"
 NOTHING_LOADED_MESSAGE = "No symbol could be loaded; see the scanner log"
 WATCHLIST_MESSAGE = "Watchlist is missing or invalid"
+STORE_UNAVAILABLE_MESSAGE = "Analysis database unavailable"
+AI_FAILED_MESSAGE = "AI provider failed"
+NOT_FOUND_MESSAGE = "Analysis not found"
+INVALID_CURSOR_MESSAGE = "Invalid cursor"
+
+AI_PROVIDER_NAME = "claude"  # the only provider the API offers; the fake one is CLI/demo-only
+MAX_AI_MIN_SCORE = 4
+MAX_AI_ROWS = 20
+DEFAULT_ANALYSES_LIMIT = 50
+MAX_ANALYSES_LIMIT = 200
+MAX_CURSOR_CHARS = 64
+MAX_LABEL_CHARS = 100
+MAX_ROW_ID = 2**63 - 1  # SQLite INTEGER; larger ids would overflow the driver
+AI_UNAVAILABLE_MESSAGE = "AI analysis is unavailable; see the server log"
+CURSOR_PREFIX = "id:"
 
 _scan_lock = threading.Lock()
+_store_init_lock = threading.Lock()  # first-time schema setup must not race itself
+_analyse_lock = (
+    threading.Lock()
+)  # one analysis phase at a time, so identical runs never double-call
 
 
 # --- response models (the generated client is built from these) ---------------------
@@ -106,7 +145,7 @@ class ScanRowOut(BaseModel):
     score: int
     zone_age: int
     prior_touches: int
-    bar_time: str
+    bar_time: str = Field(max_length=MAX_LABEL_CHARS)
 
     @classmethod
     def from_row(cls, row: ScanRow) -> "ScanRowOut":
@@ -114,7 +153,7 @@ class ScanRowOut(BaseModel):
 
 
 class ScanFailureOut(BaseModel):
-    symbol: str
+    symbol: str = Field(max_length=MAX_LABEL_CHARS)
     error: str
 
 
@@ -124,6 +163,76 @@ class ScanResponse(BaseModel):
     count: int
     rows: list[ScanRowOut]
     failures: list[ScanFailureOut]
+
+
+class AiResultOut(BaseModel):
+    """What the analyst did with one row: its status, the verdict if there is one, a short note."""
+
+    status: AiStatus
+    verdict: AiVerdict | None
+    note: str = Field(max_length=MAX_NOTE_CHARS)
+
+
+class AnalysedRowOut(ScanRowOut):
+    """A scan row plus its AI result. A subclass rather than a nullable field on ``ScanRowOut``,
+    which ``/scan`` also returns and where it would always be null."""
+
+    ai: AiResultOut
+
+
+class AnalyseRequest(BaseModel):
+    """The ``/scan`` parameters as a JSON body, plus the analyst's knobs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: ApiSource = "mt5"
+    tf: Timeframe = DEFAULT_TIMEFRAME
+    symbols: (
+        Annotated[
+            list[Annotated[str, Field(max_length=32)]], Field(min_length=1, max_length=MAX_SYMBOLS)
+        ]
+        | None
+    ) = None
+    bars: int = Field(default=DEFAULT_BARS, ge=MIN_BARS, le=MAX_BARS)
+    swing: int = Field(default=DEFAULT_SWING_LENGTH, ge=1, le=MAX_SWING_LENGTH)
+    near: float = Field(default=DEFAULT_NEAR_ATR, ge=0, le=MAX_NEAR_ATR)
+    all_touches: bool = False
+    provider: Literal["claude"] | None = None
+    min_score: int = Field(default=DEFAULT_MIN_SCORE, ge=0, le=MAX_AI_MIN_SCORE)
+    max_rows: int = Field(default=DEFAULT_MAX_ROWS, ge=1, le=MAX_AI_ROWS)
+
+
+class AnalyseResponse(BaseModel):
+    source: ApiSource
+    tf: Timeframe
+    count: int
+    rows: list[AnalysedRowOut]
+    failures: list[ScanFailureOut]
+
+
+class AnalysisOut(BaseModel):
+    """One stored analysis. The context, token counts and error text stay in the database."""
+
+    id: int
+    created_at: str = Field(max_length=MAX_LABEL_CHARS)
+    symbol: str
+    tf: str = Field(max_length=MAX_LABEL_CHARS)
+    zone_kind: str = Field(max_length=MAX_LABEL_CHARS)
+    zone: str = Field(max_length=MAX_LABEL_CHARS)
+    zone_low: float
+    zone_high: float
+    bar_time: str
+    provider: str = Field(max_length=MAX_LABEL_CHARS)
+    model: str = Field(max_length=MAX_LABEL_CHARS)
+    prompt_version: str = Field(max_length=MAX_LABEL_CHARS)
+    attempts: int
+    status: Literal["ok", "failed"]
+    verdict: AiVerdict | None
+
+
+class AnalysisPage(BaseModel):
+    items: list[AnalysisOut]
+    next_cursor: str | None = Field(default=None, max_length=MAX_CURSOR_CHARS)
 
 
 class ScanDefaults(BaseModel):
@@ -302,3 +411,228 @@ def scan(
     if result.all_failed:
         raise HTTPException(status_code=503, detail=NOTHING_LOADED_MESSAGE)
     return _to_response(source, tf, result)
+
+
+# --- analyses ---------------------------------------------------------------------------
+
+
+ProviderFactory = Callable[[], AiProvider]
+
+
+def _build_provider() -> AiProvider:
+    """The Claude provider, or 503 naming the missing key variable. AiError text is only
+    logged: a fixed message goes to the client."""
+    try:
+        return make_provider(AI_PROVIDER_NAME)
+    except AiError as exc:
+        log.error("AI analysis unavailable: %s", exc)
+        if not os.environ.get(API_KEY_ENV, "").strip():
+            detail = f"AI analysis is disabled: {API_KEY_ENV} is not set"
+        else:
+            detail = AI_UNAVAILABLE_MESSAGE
+        raise HTTPException(status_code=503, detail=detail) from exc
+
+
+def get_provider_factory() -> ProviderFactory:
+    """A factory rather than a provider, so the body is validated (422) before the key is
+    checked (503). Tests override this dependency."""
+    return _build_provider
+
+
+ProviderFactoryDep = Annotated[ProviderFactory, Depends(get_provider_factory)]
+
+
+def _open_store(*, read_only: bool) -> SqliteAnalysisStore:
+    try:
+        path = db_path_from_env()
+        if read_only:
+            return SqliteAnalysisStore.open_read_only(path)
+        with _store_init_lock:
+            return SqliteAnalysisStore(path)
+    except StoreError as exc:
+        log.error("analysis store unavailable: %s", exc)  # the path stays in the log
+        raise HTTPException(status_code=503, detail=STORE_UNAVAILABLE_MESSAGE) from exc
+
+
+def _store_unavailable(exc: StoreError) -> HTTPException:
+    log.error("analysis store failed: %s", exc)
+    return HTTPException(status_code=503, detail=STORE_UNAVAILABLE_MESSAGE)
+
+
+def _note(result: AnalysisResult) -> str:
+    verdict = result.verdict
+    if result.status == "failed":
+        return "analysis failed, see the server log"
+    if verdict is not None and verdict.downgraded:
+        return (verdict.downgrade_reason or "")[:MAX_NOTE_CHARS]
+    if result.status == "analysed" and result.error:
+        return "not saved, it will be retried"
+    return SKIP_NOTES.get(result.status, "")
+
+
+def _analysed_row(result: AnalysisResult) -> AnalysedRowOut:
+    ai = AiResultOut(status=result.status, verdict=result.verdict, note=_note(result))
+    return AnalysedRowOut(**ScanRowOut.from_row(result.row).model_dump(), ai=ai)
+
+
+def _provider_failed_everywhere(results: list[AnalysisResult]) -> bool:
+    """Something failed and nothing worked: no verdict made or reused."""
+    if not any(result.status == "failed" for result in results):
+        return False
+    return not any(result.status in {"analysed", "skipped_duplicate"} for result in results)
+
+
+@app.post(
+    "/analyse",
+    response_model=AnalyseResponse,
+    tags=["analyses"],
+    responses={
+        502: {"model": ErrorResponse, "description": "The AI provider failed for the whole run"},
+        503: {"model": ErrorResponse, "description": "Nothing loaded, AI disabled or no database"},
+    },
+)
+def analyse(
+    body: AnalyseRequest, _: InternalKeyDep, make_ai_provider: ProviderFactoryDep
+) -> AnalyseResponse:
+    """Scan, then ask the AI about the best hits; every row comes back with its AI result.
+
+    The scan runs under the scan lock, which is released before any provider call. The
+    analysis phase is serialised by its own lock, so concurrent identical runs queue and the
+    second one finds the first one's verdicts instead of calling the provider again.
+    """
+    provider = make_ai_provider()
+    store = _open_store(read_only=False)
+    options = ScanOptions(swing_length=body.swing, near_atr=body.near, all_touches=body.all_touches)
+    wanted = _symbols(body.source, ",".join(body.symbols) if body.symbols else None)
+    with _scan_lock:
+        frames = FrameCache(make_loader(body.source))
+        result = run_scan(frames, wanted, body.tf, body.bars, options)
+    if result.all_failed:
+        raise HTTPException(status_code=503, detail=NOTHING_LOADED_MESSAGE)
+    try:
+        with _analyse_lock:
+            results = analyse_hits(
+                result.rows,
+                lambda row: hit_inputs_from_ohlc(frames.frames[row.instrument], row, options),
+                provider,
+                store,
+                timeframe=body.tf,
+                min_score=body.min_score,
+                max_rows=body.max_rows,
+            )
+    except StoreError as exc:
+        raise _store_unavailable(exc) from exc
+    if _provider_failed_everywhere(results):
+        raise HTTPException(status_code=502, detail=AI_FAILED_MESSAGE)
+    return AnalyseResponse(
+        source=body.source,
+        tf=body.tf,
+        count=len(results),
+        rows=[_analysed_row(r) for r in results],
+        failures=[ScanFailureOut(symbol=f.symbol, error=f.error) for f in result.failures],
+    )
+
+
+def _clip(text: str, limit: int = MAX_LABEL_CHARS) -> str:
+    return text[:limit]
+
+
+def _stored_verdict(record: AnalysisRecord) -> AiVerdict | None:
+    if record.verdict is None:
+        return None
+    try:
+        return AiVerdict.model_validate(record.verdict)
+    except ValueError:
+        log.warning("stored verdict %s does not validate", record.id)
+        return None
+
+
+def _analysis_out(record: AnalysisRecord) -> AnalysisOut:
+    verdict = _stored_verdict(record)
+    key = record.key
+    label = record.zone.get("label")
+    return AnalysisOut(
+        id=record.id or 0,
+        created_at=record.created_at,
+        symbol=key.symbol,
+        tf=key.tf,
+        zone_kind=key.zone_kind,
+        zone=_clip(label if isinstance(label, str) else key.zone_kind),
+        zone_low=key.zone_low,
+        zone_high=key.zone_high,
+        bar_time=key.bar_time,
+        provider=_clip(record.provider),
+        model=_clip(record.model),
+        prompt_version=_clip(record.prompt_version),
+        attempts=record.attempts,
+        status="ok" if verdict is not None and record.error is None else "failed",
+        verdict=verdict,
+    )
+
+
+def _encode_cursor(record_id: int) -> str:
+    return base64.urlsafe_b64encode(f"{CURSOR_PREFIX}{record_id}".encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> int:
+    """The id behind an opaque cursor; anything else is a 422."""
+    try:
+        text = base64.urlsafe_b64decode(cursor.encode()).decode()
+    except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=INVALID_CURSOR_MESSAGE) from exc
+    number = text.removeprefix(CURSOR_PREFIX)
+    if not text.startswith(CURSOR_PREFIX) or not number.isascii() or not number.isdigit():
+        raise HTTPException(status_code=422, detail=INVALID_CURSOR_MESSAGE)
+    value = int(number)
+    if value > MAX_ROW_ID:
+        raise HTTPException(status_code=422, detail=INVALID_CURSOR_MESSAGE)
+    return value
+
+
+@app.get("/analyses", response_model=AnalysisPage, tags=["analyses"])
+def list_analyses(
+    _: InternalKeyDep,
+    symbol: Annotated[str | None, Query(pattern=SYMBOL_PATTERN.pattern)] = None,
+    action: Action | None = None,
+    min_confidence: Annotated[float | None, Query(ge=CONFIDENCE_MIN, le=CONFIDENCE_MAX)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_ANALYSES_LIMIT)] = DEFAULT_ANALYSES_LIMIT,
+    cursor: Annotated[str | None, Query(max_length=MAX_CURSOR_CHARS)] = None,
+) -> AnalysisPage:
+    """Stored analyses, newest first. Pass ``next_cursor`` back to get the following page."""
+    before_id = None if cursor is None else _decode_cursor(cursor)
+    store = _open_store(read_only=True)
+    try:
+        records = store.list_filtered(
+            symbol=symbol,
+            action=action,
+            min_confidence=min_confidence,
+            before_id=before_id,
+            limit=limit + 1,
+        )
+    except StoreError as exc:
+        raise _store_unavailable(exc) from exc
+    page = records[:limit]
+    more = len(records) > limit and page[-1].id is not None
+    return AnalysisPage(
+        items=[_analysis_out(record) for record in page],
+        next_cursor=_encode_cursor(page[-1].id or 0) if more else None,
+    )
+
+
+@app.get(
+    "/analyses/{analysis_id}",
+    response_model=AnalysisOut,
+    tags=["analyses"],
+    responses={404: {"model": ErrorResponse, "description": "No analysis with that id"}},
+)
+def get_analysis(
+    analysis_id: Annotated[int, Path(ge=1, le=MAX_ROW_ID)], _: InternalKeyDep
+) -> AnalysisOut:
+    store = _open_store(read_only=True)
+    try:
+        record = store.get_by_id(analysis_id)
+    except StoreError as exc:
+        raise _store_unavailable(exc) from exc
+    if record is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND_MESSAGE)
+    return _analysis_out(record)

@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ConfigData, ConfigErrors, ConfigResponses, HealthData, HealthErrors, HealthResponses, ScanData, ScanErrors, ScanResponses } from './types.gen';
+import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, HealthData, HealthErrors, HealthResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ScanData, ScanErrors, ScanResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -39,3 +39,33 @@ export const config = <ThrowOnError extends boolean = false>(options?: Options<C
  * per-symbol failures are listed next to the rows.
  */
 export const scan = <ThrowOnError extends boolean = false>(options?: Options<ScanData, ThrowOnError>) => (options?.client ?? client).get<ScanResponses, ScanErrors, ThrowOnError>({ url: '/scan', ...options });
+
+/**
+ * Analyse
+ *
+ * Scan, then ask the AI about the best hits; every row comes back with its AI result.
+ *
+ * The scan runs under the scan lock, which is released before any provider call. The
+ * analysis phase is serialised by its own lock, so concurrent identical runs queue and the
+ * second one finds the first one's verdicts instead of calling the provider again.
+ */
+export const analyse = <ThrowOnError extends boolean = false>(options: Options<AnalyseData, ThrowOnError>) => (options.client ?? client).post<AnalyseResponses, AnalyseErrors, ThrowOnError>({
+    url: '/analyse',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List Analyses
+ *
+ * Stored analyses, newest first. Pass ``next_cursor`` back to get the following page.
+ */
+export const listAnalyses = <ThrowOnError extends boolean = false>(options?: Options<ListAnalysesData, ThrowOnError>) => (options?.client ?? client).get<ListAnalysesResponses, ListAnalysesErrors, ThrowOnError>({ url: '/analyses', ...options });
+
+/**
+ * Get Analysis
+ */
+export const getAnalysis = <ThrowOnError extends boolean = false>(options: Options<GetAnalysisData, ThrowOnError>) => (options.client ?? client).get<GetAnalysisResponses, GetAnalysisErrors, ThrowOnError>({ url: '/analyses/{analysis_id}', ...options });
