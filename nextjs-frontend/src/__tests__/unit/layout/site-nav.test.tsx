@@ -38,7 +38,7 @@ describe('SiteNav', () => {
   it('shows unbuilt pages as disabled soon items, not links', () => {
     render(<SiteNav />);
 
-    for (const name of ['Analyses', 'Automation', 'Settings']) {
+    for (const name of ['Automation', 'Settings']) {
       expect(screen.queryByRole('link', { name: new RegExp(name) })).not.toBeInTheDocument();
       const item = screen.getByText(name).closest('[aria-disabled="true"]');
       expect(item).not.toBeNull();
@@ -54,14 +54,24 @@ describe('SiteNav', () => {
     await userEvent.tab();
     expect(screen.getByRole('link', { name: 'Scan' })).toHaveFocus();
     await userEvent.tab();
+    expect(screen.getByRole('link', { name: 'Analyses' })).toHaveFocus();
+    await userEvent.tab();
     expect(screen.getByRole('button', { name: /theme/ })).toHaveFocus();
+  });
+
+  it('links Analyses and marks it current on /analyses and below', () => {
+    nav.pathname = '/analyses/42';
+    render(<SiteNav />);
+
+    expect(screen.getByRole('link', { name: 'Analyses' })).toHaveAttribute('href', '/analyses');
+    expect(screen.getByRole('link', { name: 'Analyses' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('tells screen readers the disabled items are coming soon', () => {
     render(<SiteNav />);
 
-    expect(screen.getByText('Analyses').closest('[aria-disabled]')).toHaveTextContent(
-      'Analyses (coming soon)'
+    expect(screen.getByText('Automation').closest('[aria-disabled]')).toHaveTextContent(
+      'Automation (coming soon)'
     );
   });
 });
