@@ -3,3 +3,5 @@ node_modules/
 coverage/
 src/lib/api/generated/
 openapi.json
+playwright-report/
+test-results/
