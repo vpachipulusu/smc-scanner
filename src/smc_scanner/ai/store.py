@@ -77,6 +77,19 @@ SELECT {_COLUMNS} FROM analyses
 WHERE symbol = ? AND tf = ? AND zone_kind = ? AND zone_low = ? AND zone_high = ? AND bar_time = ?
 """
 _SELECT_RECENT: Final = f"SELECT {_COLUMNS} FROM analyses ORDER BY created_at DESC, id DESC LIMIT ?"
+_SELECT_BY_ID: Final = f"SELECT {_COLUMNS} FROM analyses WHERE id = ?"
+# Optional filters are bound as NULL when unused, so the statement text never changes. The
+# verdict JSON is read with json_extract; a failed attempt (verdict NULL) never matches a
+# verdict filter. Keyset paging on the primary key: newest first, ``id < before_id``.
+_SELECT_FILTERED: Final = f"""
+SELECT {_COLUMNS} FROM analyses
+WHERE (? IS NULL OR symbol = ?)
+  AND (? IS NULL OR json_extract(verdict, '$.action') = ?)
+  AND (? IS NULL OR json_extract(verdict, '$.confidence') >= ?)
+  AND (? IS NULL OR id < ?)
+ORDER BY id DESC
+LIMIT ?
+"""
 
 
 class StoreError(Exception):
@@ -154,7 +167,25 @@ class AnalysisStore(Protocol):
     def list_recent(self, limit: int) -> list[AnalysisRecord]: ...
 
 
-def _checked_path(raw: str | Path) -> Path:
+class AnalysisReader(Protocol):
+    """Read side used by the API: one record by id, and a filtered, keyset-paged list."""
+
+    def get_by_id(self, record_id: int) -> AnalysisRecord | None: ...
+
+    def list_filtered(
+        self,
+        *,
+        symbol: str | None = None,
+        action: str | None = None,
+        min_confidence: float | None = None,
+        before_id: int | None = None,
+        limit: int = 50,
+    ) -> list[AnalysisRecord]:
+        """Newest first (by id). ``before_id`` is exclusive; ``limit`` is capped at 500."""
+        ...
+
+
+def checked_path(raw: str | Path) -> Path:
     """Absolute path; UNC (network) paths and directories are refused."""
     text = str(raw)
     if text.startswith(("\\\\", "//")):
@@ -170,7 +201,7 @@ def db_path_from_env() -> Path:
     raw = os.environ.get(DB_PATH_ENV, "").strip()
     if chr(0) in raw:
         raise StoreError(f"{DB_PATH_ENV} must not contain NUL characters")
-    path = _checked_path(raw or DEFAULT_DB_PATH)
+    path = checked_path(raw or DEFAULT_DB_PATH)
     log.info("analysis database: %s", path)
     return path
 
@@ -234,14 +265,28 @@ def _to_record(row: tuple[Any, ...]) -> AnalysisRecord:
 
 
 class SqliteAnalysisStore:
+    _read_only = False
+
     def __init__(self, path: Path | str) -> None:
-        self._path = _checked_path(path)
+        self._path = checked_path(path)
         parent = self._path.parent
         if not parent.is_dir():
             raise StoreError(f"database directory does not exist: {parent}")
         self._create_private_file()
         with self._connect() as conn:
             self._init_schema(conn)
+
+    @classmethod
+    def open_read_only(cls, path: Path | str) -> "SqliteAnalysisStore":
+        """A reader that never creates, migrates or writes the database.
+
+        A missing or uninitialised file fails on first use with ``StoreError``, so a wrong
+        path is an error rather than an empty result.
+        """
+        store = cls.__new__(cls)
+        store._path = checked_path(path)
+        store._read_only = True
+        return store
 
     def _create_private_file(self) -> None:
         """Create the file owner-only before SQLite does (best effort; Windows ignores modes)."""
@@ -267,7 +312,12 @@ class SqliteAnalysisStore:
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         try:
-            connection = sqlite3.connect(self._path, timeout=BUSY_TIMEOUT_SECONDS)
+            if self._read_only:
+                uri = f"{self._path.as_uri()}?mode=ro"
+                connection = sqlite3.connect(uri, uri=True, timeout=BUSY_TIMEOUT_SECONDS)
+                connection.execute("PRAGMA query_only = ON")
+            else:
+                connection = sqlite3.connect(self._path, timeout=BUSY_TIMEOUT_SECONDS)
             with closing(connection), connection:  # connection: commit or roll back
                 yield connection
         except sqlite3.Error as exc:
@@ -310,4 +360,35 @@ class SqliteAnalysisStore:
         limit = min(limit, MAX_LIST_LIMIT)
         with self._connect() as conn:
             rows = conn.execute(_SELECT_RECENT, (limit,)).fetchall()
+        return [_to_record(row) for row in rows]
+
+    def get_by_id(self, record_id: int) -> AnalysisRecord | None:
+        with self._connect() as conn:
+            row = conn.execute(_SELECT_BY_ID, (record_id,)).fetchone()
+        return None if row is None else _to_record(row)
+
+    def list_filtered(
+        self,
+        *,
+        symbol: str | None = None,
+        action: str | None = None,
+        min_confidence: float | None = None,
+        before_id: int | None = None,
+        limit: int = 50,
+    ) -> list[AnalysisRecord]:
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        params = (
+            symbol,
+            symbol,
+            action,
+            action,
+            min_confidence,
+            min_confidence,
+            before_id,
+            before_id,
+            min(limit, MAX_LIST_LIMIT),
+        )
+        with self._connect() as conn:
+            rows = conn.execute(_SELECT_FILTERED, params).fetchall()
         return [_to_record(row) for row in rows]

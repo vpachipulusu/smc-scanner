@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Screens a watchlist for price touching or near fresh order blocks and fair value gaps (read-only, never trades)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "apscheduler>=3.11,<4",
     "fastapi>=0.150.0",
     "httpx>=0.28.1",
     "metatrader5>=5.0.5000; sys_platform == 'win32'",
@@ -13,6 +14,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
     "smartmoneyconcepts==0.0.27",
+    "tzdata>=2024.1; sys_platform == 'win32'",
     "uvicorn>=0.54.0",
 ]
 
@@ -54,7 +56,7 @@ python_version = "3.12"
 strict = true
 files = ["src", "tests"]
 [[tool.mypy.overrides]]
-module = ["smartmoneyconcepts.*", "MetaTrader5.*"]
+module = ["smartmoneyconcepts.*", "MetaTrader5.*", "apscheduler.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
