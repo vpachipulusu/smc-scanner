@@ -115,7 +115,7 @@ describe('Dashboard page', () => {
     expect(html).toContain('USDJPY');
     expect(html).toContain('role="progressbar"');
     expect(html).toContain('#42');
-    expect(html).not.toContain('href="/analyses');
+    expect(html).toContain('href="/analyses/42"');
   });
 
   it('shows the empty verdicts state', async () => {

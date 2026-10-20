@@ -47,7 +47,7 @@ describe('ErrorBanner', () => {
 });
 
 describe('VerdictList', () => {
-  it('renders each verdict with an action pill, confidence bar and plain-text id', () => {
+  it('renders each verdict with an action pill, confidence bar and a link to the detail page', () => {
     render(<VerdictList items={ITEMS} />);
 
     expect(screen.getAllByRole('listitem')).toHaveLength(3);
@@ -57,7 +57,11 @@ describe('VerdictList', () => {
     expect(screen.getByRole('img', { name: 'Confidence not available' })).toBeInTheDocument();
     expect(screen.getByText('72%')).toBeInTheDocument();
     expect(screen.getByText('100%')).toBeInTheDocument();
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('link')).toHaveLength(3);
+    expect(screen.getByRole('link', { name: /#3 details for EURUSD 1h/ })).toHaveAttribute(
+      'href',
+      '/analyses/3'
+    );
     expect(screen.queryByText(/not available yet/)).not.toBeInTheDocument();
     expect(document.querySelectorAll('time')).toHaveLength(2);
     expect(screen.getByText('not a date').tagName).toBe('SPAN');

@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { ActionPill, type ActionPillAction } from '@/components/common/action-pill';
 import { ConfidenceBar } from '@/components/common/confidence-bar';
 import { StatusPill } from '@/components/ui/status-pill';
@@ -20,10 +22,7 @@ function When({ iso }: { iso: string }) {
   return <time dateTime={iso}>{`${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`}</time>;
 }
 
-/**
- * One row per verdict. The detail page (/analyses/[id]) does not exist yet, so the id is plain
- * text rather than a link that would 404.
- */
+/** One row per verdict; the id links to the detail page (/analyses/[id]). */
 export function VerdictList({ items }: { items: readonly VerdictItem[] }) {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">No verdicts yet.</p>;
@@ -48,7 +47,13 @@ export function VerdictList({ items }: { items: readonly VerdictItem[] }) {
             <span className="w-full text-sm text-muted-foreground sm:ml-auto sm:w-auto">
               <When iso={item.createdAt} />
               <span aria-hidden="true"> · </span>
-              <span>#{item.id}</span>
+              <Link
+                href={`/analyses/${item.id}`}
+                className="inline-block rounded-sm py-1 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                #{item.id}
+                <span className="sr-only">{` details for ${item.symbol} ${item.tf}`}</span>
+              </Link>
             </span>
           </li>
         ))}
