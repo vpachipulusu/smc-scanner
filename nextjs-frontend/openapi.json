@@ -323,10 +323,924 @@
           }
         }
       }
+    },
+    "/analyse": {
+      "post": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "Analyse",
+        "description": "Scan, then ask the AI about the best hits; every row comes back with its AI result.\n\nThe scan runs under the scan lock, which is released before any provider call. The\nanalysis phase is serialised by its own lock, so concurrent identical runs queue and the\nsecond one finds the first one's verdicts instead of calling the provider again.",
+        "operationId": "analyse",
+        "parameters": [
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyseResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Nothing loaded, AI disabled or no database",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The AI provider failed for the whole run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analyses": {
+      "get": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "List Analyses",
+        "description": "Stored analyses, newest first. Pass ``next_cursor`` back to get the following page.",
+        "operationId": "list_analyses",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._#@\\-]{1,32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "BUY",
+                    "SELL",
+                    "HOLD"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "name": "min_confidence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 100.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Confidence"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No symbol could be loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analyses/{analysis_id}": {
+      "get": {
+        "tags": [
+          "analyses"
+        ],
+        "summary": "Get Analysis",
+        "operationId": "get_analysis",
+        "parameters": [
+          {
+            "name": "analysis_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Analysis Id"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No symbol could be loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No analysis with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AiResultOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "analysed",
+              "skipped_low_score",
+              "skipped_cap",
+              "skipped_duplicate",
+              "skipped_failed_recently",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiVerdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "verdict",
+          "note"
+        ],
+        "title": "AiResultOut",
+        "description": "What the analyst did with one row: its status, the verdict if there is one, a short note."
+      },
+      "AiVerdict": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version",
+            "default": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL",
+              "HOLD"
+            ],
+            "title": "Action"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "A",
+                  "B",
+                  "C"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "entry": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry"
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop"
+          },
+          "targets": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Targets",
+            "default": []
+          },
+          "risk_reward": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Reward"
+          },
+          "invalidation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidation"
+          },
+          "reasons": {
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Reasons",
+            "default": []
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 600,
+            "title": "Summary",
+            "default": ""
+          },
+          "downgraded": {
+            "type": "boolean",
+            "title": "Downgraded",
+            "default": false
+          },
+          "downgrade_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Downgrade Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "confidence"
+        ],
+        "title": "AiVerdict",
+        "description": "Validated verdict. `risk_reward` is computed locally, never taken from the model."
+      },
+      "AnalyseRequest": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "mt5",
+              "demo"
+            ],
+            "title": "Source",
+            "default": "mt5"
+          },
+          "tf": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Tf",
+            "default": "1h"
+          },
+          "symbols": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                "type": "array",
+                "maxItems": 50,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbols"
+          },
+          "bars": {
+            "type": "integer",
+            "maximum": 5000.0,
+            "minimum": 15.0,
+            "title": "Bars",
+            "default": 500
+          },
+          "swing": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Swing",
+            "default": 10
+          },
+          "near": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Near",
+            "default": 0.5
+          },
+          "all_touches": {
+            "type": "boolean",
+            "title": "All Touches",
+            "default": false
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "claude"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "min_score": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "default": 2
+          },
+          "max_rows": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Rows",
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AnalyseRequest",
+        "description": "The ``/scan`` parameters as a JSON body, plus the analyst's knobs."
+      },
+      "AnalyseResponse": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "mt5",
+              "demo"
+            ],
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Tf"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysedRowOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/ScanFailureOut"
+            },
+            "type": "array",
+            "title": "Failures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "tf",
+          "count",
+          "rows",
+          "failures"
+        ],
+        "title": "AnalyseResponse"
+      },
+      "AnalysedRowOut": {
+        "properties": {
+          "instrument": {
+            "type": "string",
+            "title": "Instrument"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "TOUCHING",
+              "NEAR"
+            ],
+            "title": "Status"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "zone_low": {
+            "type": "number",
+            "title": "Zone Low"
+          },
+          "zone_high": {
+            "type": "number",
+            "title": "Zone High"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "dist_atr": {
+            "type": "number",
+            "title": "Dist Atr"
+          },
+          "bias": {
+            "type": "string",
+            "enum": [
+              "bullish",
+              "bearish",
+              "range"
+            ],
+            "title": "Bias"
+          },
+          "in_ote": {
+            "type": "boolean",
+            "title": "In Ote"
+          },
+          "trendline_ok": {
+            "type": "boolean",
+            "title": "Trendline Ok"
+          },
+          "ob_fvg": {
+            "type": "boolean",
+            "title": "Ob Fvg"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "zone_age": {
+            "type": "integer",
+            "title": "Zone Age"
+          },
+          "prior_touches": {
+            "type": "integer",
+            "title": "Prior Touches"
+          },
+          "bar_time": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Bar Time"
+          },
+          "ai": {
+            "$ref": "#/components/schemas/AiResultOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "instrument",
+          "status",
+          "zone",
+          "zone_low",
+          "zone_high",
+          "price",
+          "dist_atr",
+          "bias",
+          "in_ote",
+          "trendline_ok",
+          "ob_fvg",
+          "score",
+          "zone_age",
+          "prior_touches",
+          "bar_time",
+          "ai"
+        ],
+        "title": "AnalysedRowOut",
+        "description": "A scan row plus its AI result. A subclass rather than a nullable field on ``ScanRowOut``,\nwhich ``/scan`` also returns and where it would always be null."
+      },
+      "AnalysisOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Created At"
+          },
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "tf": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Tf"
+          },
+          "zone_kind": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Zone Kind"
+          },
+          "zone": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Zone"
+          },
+          "zone_low": {
+            "type": "number",
+            "title": "Zone Low"
+          },
+          "zone_high": {
+            "type": "number",
+            "title": "Zone High"
+          },
+          "bar_time": {
+            "type": "string",
+            "title": "Bar Time"
+          },
+          "provider": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Model"
+          },
+          "prompt_version": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Prompt Version"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiVerdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "symbol",
+          "tf",
+          "zone_kind",
+          "zone",
+          "zone_low",
+          "zone_high",
+          "bar_time",
+          "provider",
+          "model",
+          "prompt_version",
+          "attempts",
+          "status",
+          "verdict"
+        ],
+        "title": "AnalysisOut",
+        "description": "One stored analysis. The context, token counts and error text stay in the database."
+      },
+      "AnalysisPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "AnalysisPage"
+      },
       "ConfigResponse": {
         "properties": {
           "sources": {
@@ -471,6 +1385,7 @@
         "properties": {
           "symbol": {
             "type": "string",
+            "maxLength": 100,
             "title": "Symbol"
           },
           "error": {
@@ -638,6 +1553,7 @@
           },
           "bar_time": {
             "type": "string",
+            "maxLength": 100,
             "title": "Bar Time"
           }
         },
