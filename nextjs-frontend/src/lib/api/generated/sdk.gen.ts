@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, HealthData, HealthErrors, HealthResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ScanData, ScanErrors, ScanResponses } from './types.gen';
+import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, HealthData, HealthErrors, HealthResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -69,3 +69,78 @@ export const listAnalyses = <ThrowOnError extends boolean = false>(options?: Opt
  * Get Analysis
  */
 export const getAnalysis = <ThrowOnError extends boolean = false>(options: Options<GetAnalysisData, ThrowOnError>) => (options.client ?? client).get<GetAnalysisResponses, GetAnalysisErrors, ThrowOnError>({ url: '/analyses/{analysis_id}', ...options });
+
+/**
+ * List Schedules
+ */
+export const listSchedules = <ThrowOnError extends boolean = false>(options?: Options<ListSchedulesData, ThrowOnError>) => (options?.client ?? client).get<ListSchedulesResponses, ListSchedulesErrors, ThrowOnError>({ url: '/schedules', ...options });
+
+/**
+ * Create Schedule
+ */
+export const createSchedule = <ThrowOnError extends boolean = false>(options: Options<CreateScheduleData, ThrowOnError>) => (options.client ?? client).post<CreateScheduleResponses, CreateScheduleErrors, ThrowOnError>({
+    url: '/schedules',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Schedule
+ *
+ * Delete a schedule, its sent-alert marks and its job log.
+ */
+export const deleteSchedule = <ThrowOnError extends boolean = false>(options: Options<DeleteScheduleData, ThrowOnError>) => (options.client ?? client).delete<DeleteScheduleResponses, DeleteScheduleErrors, ThrowOnError>({ url: '/schedules/{schedule_id}', ...options });
+
+/**
+ * Get Schedule
+ */
+export const getSchedule = <ThrowOnError extends boolean = false>(options: Options<GetScheduleData, ThrowOnError>) => (options.client ?? client).get<GetScheduleResponses, GetScheduleErrors, ThrowOnError>({ url: '/schedules/{schedule_id}', ...options });
+
+/**
+ * Update Schedule
+ *
+ * Change some fields. Changing the frequency or the enabled flag picks a fresh next slot.
+ */
+export const updateSchedule = <ThrowOnError extends boolean = false>(options: Options<UpdateScheduleData, ThrowOnError>) => (options.client ?? client).patch<UpdateScheduleResponses, UpdateScheduleErrors, ThrowOnError>({
+    url: '/schedules/{schedule_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Run Schedule Now
+ *
+ * Run the schedule once now, waiting for the result.
+ *
+ * Takes the same scan lock as ``/scan`` and never queues behind it: 409 when this schedule is
+ * already running or a scan holds the lock. The error text of a failed run is in the job log.
+ */
+export const runScheduleNow = <ThrowOnError extends boolean = false>(options: Options<RunScheduleNowData, ThrowOnError>) => (options.client ?? client).post<RunScheduleNowResponses, RunScheduleNowErrors, ThrowOnError>({ url: '/schedules/{schedule_id}/run', ...options });
+
+/**
+ * List Schedule Logs
+ *
+ * Job-log rows of one schedule, newest first. Pass ``next_cursor`` back for the next page.
+ */
+export const listScheduleLogs = <ThrowOnError extends boolean = false>(options: Options<ListScheduleLogsData, ThrowOnError>) => (options.client ?? client).get<ListScheduleLogsResponses, ListScheduleLogsErrors, ThrowOnError>({ url: '/schedules/{schedule_id}/logs', ...options });
+
+/**
+ * Send Telegram Test
+ *
+ * Send a fixed test message to ``chat_id`` (default ``TELEGRAM_CHAT_ID``). The token is read
+ * from the environment only and never appears in a response or a log.
+ */
+export const sendTelegramTest = <ThrowOnError extends boolean = false>(options?: Options<SendTelegramTestData, ThrowOnError>) => (options?.client ?? client).post<SendTelegramTestResponses, SendTelegramTestErrors, ThrowOnError>({
+    url: '/telegram/test',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
+    }
+});

@@ -329,6 +329,16 @@ export type ConfigResponse = {
 };
 
 /**
+ * DeleteResponse
+ */
+export type DeleteResponse = {
+    /**
+     * Deleted
+     */
+    deleted?: true;
+};
+
+/**
  * ErrorResponse
  *
  * Body of every error response.
@@ -356,6 +366,101 @@ export type HealthResponse = {
      * Version
      */
     version: string;
+};
+
+/**
+ * JobLogOut
+ *
+ * One job-log row. ``error`` is raw text (already redacted and bounded): render it as
+ * text, never as markup.
+ */
+export type JobLogOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Schedule Id
+     */
+    schedule_id: number;
+    /**
+     * Started At
+     */
+    started_at: string;
+    /**
+     * Finished At
+     */
+    finished_at: string;
+    /**
+     * Duration Ms
+     */
+    duration_ms: number;
+    /**
+     * Status
+     */
+    status: 'success' | 'skipped' | 'failed';
+    /**
+     * Hits
+     */
+    hits: number;
+    /**
+     * Delivered
+     */
+    delivered: number;
+    /**
+     * Skipped
+     */
+    skipped: number;
+    /**
+     * Skip Reason
+     */
+    skip_reason: string | null;
+    /**
+     * Error
+     */
+    error: string | null;
+};
+
+/**
+ * JobLogPage
+ */
+export type JobLogPage = {
+    /**
+     * Items
+     */
+    items: Array<JobLogOut>;
+    /**
+     * Next Cursor
+     */
+    next_cursor?: string | null;
+};
+
+/**
+ * RunOut
+ *
+ * What a run-now did. Error text is never returned here; see the job log.
+ */
+export type RunOut = {
+    /**
+     * Status
+     */
+    status: 'ok' | 'failed';
+    /**
+     * Rows
+     */
+    rows: number;
+    /**
+     * Delivered
+     */
+    delivered: number;
+    /**
+     * Skipped
+     */
+    skipped: number;
+    /**
+     * Error Count
+     */
+    error_count: number;
 };
 
 /**
@@ -514,6 +619,204 @@ export type ScanRowOut = {
      * Bar Time
      */
     bar_time: string;
+};
+
+/**
+ * ScheduleCreate
+ *
+ * A new schedule. Every field but the first five has a default.
+ */
+export type ScheduleCreate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Source
+     */
+    source: 'mt5' | 'demo';
+    /**
+     * Tf
+     */
+    tf: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Symbols
+     */
+    symbols: Array<string>;
+    /**
+     * Frequency
+     */
+    frequency: '15m' | '1h' | '4h' | '1d';
+    /**
+     * Min Score
+     */
+    min_score?: number;
+    /**
+     * Min Confidence
+     */
+    min_confidence?: number;
+    /**
+     * Only On Change
+     */
+    only_on_change?: boolean;
+    /**
+     * Send Hold
+     */
+    send_hold?: boolean;
+    /**
+     * Enabled
+     */
+    enabled?: boolean;
+    /**
+     * Telegram Chat Id
+     */
+    telegram_chat_id?: string | null;
+};
+
+/**
+ * ScheduleList
+ */
+export type ScheduleList = {
+    /**
+     * Items
+     */
+    items: Array<ScheduleOut>;
+};
+
+/**
+ * ScheduleOut
+ */
+export type ScheduleOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Source
+     */
+    source: 'mt5' | 'demo';
+    /**
+     * Tf
+     */
+    tf: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Symbols
+     */
+    symbols: Array<string>;
+    /**
+     * Frequency
+     */
+    frequency: '15m' | '1h' | '4h' | '1d';
+    /**
+     * Min Score
+     */
+    min_score: number;
+    /**
+     * Min Confidence
+     */
+    min_confidence: number;
+    /**
+     * Only On Change
+     */
+    only_on_change: boolean;
+    /**
+     * Send Hold
+     */
+    send_hold: boolean;
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Telegram Chat Id
+     */
+    telegram_chat_id: string | null;
+    /**
+     * Last Run At
+     */
+    last_run_at: string | null;
+    /**
+     * Next Run At
+     */
+    next_run_at: string | null;
+};
+
+/**
+ * ScheduleUpdate
+ *
+ * Any subset of the editable fields. Only ``telegram_chat_id`` may be null (it clears it).
+ */
+export type ScheduleUpdate = {
+    /**
+     * Name
+     */
+    name?: string;
+    /**
+     * Source
+     */
+    source?: 'mt5' | 'demo';
+    /**
+     * Tf
+     */
+    tf?: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Symbols
+     */
+    symbols?: Array<string>;
+    /**
+     * Frequency
+     */
+    frequency?: '15m' | '1h' | '4h' | '1d';
+    /**
+     * Min Score
+     */
+    min_score?: number;
+    /**
+     * Min Confidence
+     */
+    min_confidence?: number;
+    /**
+     * Only On Change
+     */
+    only_on_change?: boolean;
+    /**
+     * Send Hold
+     */
+    send_hold?: boolean;
+    /**
+     * Enabled
+     */
+    enabled?: boolean;
+    /**
+     * Telegram Chat Id
+     */
+    telegram_chat_id?: string | null;
+};
+
+/**
+ * TelegramTestRequest
+ */
+export type TelegramTestRequest = {
+    /**
+     * Chat Id
+     *
+     * default: TELEGRAM_CHAT_ID
+     */
+    chat_id?: string | null;
+};
+
+/**
+ * TelegramTestResponse
+ */
+export type TelegramTestResponse = {
+    /**
+     * Sent
+     */
+    sent?: true;
 };
 
 export type HealthData = {
@@ -832,3 +1135,420 @@ export type GetAnalysisResponses = {
 };
 
 export type GetAnalysisResponse = GetAnalysisResponses[keyof GetAnalysisResponses];
+
+export type ListSchedulesData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/schedules';
+};
+
+export type ListSchedulesErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Schedule database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListSchedulesError = ListSchedulesErrors[keyof ListSchedulesErrors];
+
+export type ListSchedulesResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScheduleList;
+};
+
+export type ListSchedulesResponse = ListSchedulesResponses[keyof ListSchedulesResponses];
+
+export type CreateScheduleData = {
+    body: ScheduleCreate;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/schedules';
+};
+
+export type CreateScheduleErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * The schedule limit is reached
+     */
+    409: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Schedule database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type CreateScheduleError = CreateScheduleErrors[keyof CreateScheduleErrors];
+
+export type CreateScheduleResponses = {
+    /**
+     * Successful Response
+     */
+    201: ScheduleOut;
+};
+
+export type CreateScheduleResponse = CreateScheduleResponses[keyof CreateScheduleResponses];
+
+export type DeleteScheduleData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Schedule Id
+         */
+        schedule_id: number;
+    };
+    query?: never;
+    url: '/schedules/{schedule_id}';
+};
+
+export type DeleteScheduleErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No schedule with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Schedule database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type DeleteScheduleError = DeleteScheduleErrors[keyof DeleteScheduleErrors];
+
+export type DeleteScheduleResponses = {
+    /**
+     * Successful Response
+     */
+    200: DeleteResponse;
+};
+
+export type DeleteScheduleResponse = DeleteScheduleResponses[keyof DeleteScheduleResponses];
+
+export type GetScheduleData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Schedule Id
+         */
+        schedule_id: number;
+    };
+    query?: never;
+    url: '/schedules/{schedule_id}';
+};
+
+export type GetScheduleErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No schedule with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Schedule database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type GetScheduleError = GetScheduleErrors[keyof GetScheduleErrors];
+
+export type GetScheduleResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScheduleOut;
+};
+
+export type GetScheduleResponse = GetScheduleResponses[keyof GetScheduleResponses];
+
+export type UpdateScheduleData = {
+    body: ScheduleUpdate;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Schedule Id
+         */
+        schedule_id: number;
+    };
+    query?: never;
+    url: '/schedules/{schedule_id}';
+};
+
+export type UpdateScheduleErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No schedule with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Schedule database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type UpdateScheduleError = UpdateScheduleErrors[keyof UpdateScheduleErrors];
+
+export type UpdateScheduleResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScheduleOut;
+};
+
+export type UpdateScheduleResponse = UpdateScheduleResponses[keyof UpdateScheduleResponses];
+
+export type RunScheduleNowData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Schedule Id
+         */
+        schedule_id: number;
+    };
+    query?: never;
+    url: '/schedules/{schedule_id}/run';
+};
+
+export type RunScheduleNowErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No schedule with that id
+     */
+    404: ErrorResponse;
+    /**
+     * This schedule or a scan is already running
+     */
+    409: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Schedule database or run setup unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type RunScheduleNowError = RunScheduleNowErrors[keyof RunScheduleNowErrors];
+
+export type RunScheduleNowResponses = {
+    /**
+     * Successful Response
+     */
+    200: RunOut;
+};
+
+export type RunScheduleNowResponse = RunScheduleNowResponses[keyof RunScheduleNowResponses];
+
+export type ListScheduleLogsData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Schedule Id
+         */
+        schedule_id: number;
+    };
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Cursor
+         */
+        cursor?: string | null;
+    };
+    url: '/schedules/{schedule_id}/logs';
+};
+
+export type ListScheduleLogsErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No schedule with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Schedule database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListScheduleLogsError = ListScheduleLogsErrors[keyof ListScheduleLogsErrors];
+
+export type ListScheduleLogsResponses = {
+    /**
+     * Successful Response
+     */
+    200: JobLogPage;
+};
+
+export type ListScheduleLogsResponse = ListScheduleLogsResponses[keyof ListScheduleLogsResponses];
+
+export type SendTelegramTestData = {
+    /**
+     * Body
+     */
+    body?: TelegramTestRequest | null;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/telegram/test';
+};
+
+export type SendTelegramTestErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Another test message was sent just now
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Telegram did not accept the message
+     */
+    502: ErrorResponse;
+    /**
+     * TELEGRAM_BOT_TOKEN is not set
+     */
+    503: ErrorResponse;
+};
+
+export type SendTelegramTestError = SendTelegramTestErrors[keyof SendTelegramTestErrors];
+
+export type SendTelegramTestResponses = {
+    /**
+     * Successful Response
+     */
+    200: TelegramTestResponse;
+};
+
+export type SendTelegramTestResponse = SendTelegramTestResponses[keyof SendTelegramTestResponses];

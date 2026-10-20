@@ -688,6 +688,848 @@
           }
         }
       }
+    },
+    "/schedules": {
+      "get": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "List Schedules",
+        "operationId": "list_schedules",
+        "parameters": [
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Schedule database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Create Schedule",
+        "operationId": "create_schedule",
+        "parameters": [
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Schedule database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The schedule limit is reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules/{schedule_id}": {
+      "get": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Get Schedule",
+        "operationId": "get_schedule",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Schedule database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No schedule with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Update Schedule",
+        "description": "Change some fields. Changing the frequency or the enabled flag picks a fresh next slot.",
+        "operationId": "update_schedule",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Schedule database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No schedule with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Delete Schedule",
+        "description": "Delete a schedule, its sent-alert marks and its job log.",
+        "operationId": "delete_schedule",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Schedule database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No schedule with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules/{schedule_id}/run": {
+      "post": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Run Schedule Now",
+        "description": "Run the schedule once now, waiting for the result.\n\nTakes the same scan lock as ``/scan`` and never queues behind it: 409 when this schedule is\nalready running or a scan holds the lock. The error text of a failed run is in the job log.",
+        "operationId": "run_schedule_now",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Schedule database or run setup unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No schedule with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This schedule or a scan is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/schedules/{schedule_id}/logs": {
+      "get": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "List Schedule Logs",
+        "description": "Job-log rows of one schedule, newest first. Pass ``next_cursor`` back for the next page.",
+        "operationId": "list_schedule_logs",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobLogPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Schedule database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No schedule with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/telegram/test": {
+      "post": {
+        "tags": [
+          "schedules"
+        ],
+        "summary": "Send Telegram Test",
+        "description": "Send a fixed test message to ``chat_id`` (default ``TELEGRAM_CHAT_ID``). The token is read\nfrom the environment only and never appears in a response or a log.",
+        "operationId": "send_telegram_test",
+        "parameters": [
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TelegramTestRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramTestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "TELEGRAM_BOT_TOKEN is not set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Telegram did not accept the message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Another test message was sent just now",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1297,6 +2139,18 @@
         "title": "ConfigResponse",
         "description": "What the scan form needs: choices, defaults, limits and the watchlist per source."
       },
+      "DeleteResponse": {
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "const": true,
+            "title": "Deleted",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "DeleteResponse"
+      },
       "ErrorResponse": {
         "properties": {
           "success": {
@@ -1335,6 +2189,159 @@
           "version"
         ],
         "title": "HealthResponse"
+      },
+      "JobLogOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "schedule_id": {
+            "type": "integer",
+            "title": "Schedule Id"
+          },
+          "started_at": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Started At"
+          },
+          "finished_at": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Finished At"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "skipped",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "hits": {
+            "type": "integer",
+            "title": "Hits"
+          },
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "skip_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skip Reason"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "schedule_id",
+          "started_at",
+          "finished_at",
+          "duration_ms",
+          "status",
+          "hits",
+          "delivered",
+          "skipped",
+          "skip_reason",
+          "error"
+        ],
+        "title": "JobLogOut",
+        "description": "One job-log row. ``error`` is raw text (already redacted and bounded): render it as\ntext, never as markup."
+      },
+      "JobLogPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobLogOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "JobLogPage"
+      },
+      "RunOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "rows": {
+            "type": "integer",
+            "title": "Rows"
+          },
+          "delivered": {
+            "type": "integer",
+            "title": "Delivered"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "error_count": {
+            "type": "integer",
+            "title": "Error Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "rows",
+          "delivered",
+          "skipped",
+          "error_count"
+        ],
+        "title": "RunOut",
+        "description": "What a run-now did. Error text is never returned here; see the job log."
       },
       "ScanDefaults": {
         "properties": {
@@ -1576,6 +2583,368 @@
           "bar_time"
         ],
         "title": "ScanRowOut"
+      },
+      "ScheduleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "mt5",
+              "demo"
+            ],
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Tf"
+          },
+          "symbols": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._#@\\-]{1,32}$"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Symbols"
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "15m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Frequency"
+          },
+          "min_score": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "default": 2
+          },
+          "min_confidence": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Min Confidence",
+            "default": 0.0
+          },
+          "only_on_change": {
+            "type": "boolean",
+            "title": "Only On Change",
+            "default": false
+          },
+          "send_hold": {
+            "type": "boolean",
+            "title": "Send Hold",
+            "default": false
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "telegram_chat_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Chat Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "tf",
+          "symbols",
+          "frequency"
+        ],
+        "title": "ScheduleCreate",
+        "description": "A new schedule. Every field but the first five has a default."
+      },
+      "ScheduleList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ScheduleList"
+      },
+      "ScheduleOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "mt5",
+              "demo"
+            ],
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Tf"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "15m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Frequency"
+          },
+          "min_score": {
+            "type": "integer",
+            "title": "Min Score"
+          },
+          "min_confidence": {
+            "type": "number",
+            "title": "Min Confidence"
+          },
+          "only_on_change": {
+            "type": "boolean",
+            "title": "Only On Change"
+          },
+          "send_hold": {
+            "type": "boolean",
+            "title": "Send Hold"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "telegram_chat_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Chat Id"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "source",
+          "tf",
+          "symbols",
+          "frequency",
+          "min_score",
+          "min_confidence",
+          "only_on_change",
+          "send_hold",
+          "enabled",
+          "telegram_chat_id",
+          "last_run_at",
+          "next_run_at"
+        ],
+        "title": "ScheduleOut"
+      },
+      "ScheduleUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "mt5",
+              "demo"
+            ],
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Tf"
+          },
+          "symbols": {
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._#@\\-]{1,32}$"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Symbols"
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "15m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Frequency"
+          },
+          "min_score": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Min Score"
+          },
+          "min_confidence": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Min Confidence"
+          },
+          "only_on_change": {
+            "type": "boolean",
+            "title": "Only On Change"
+          },
+          "send_hold": {
+            "type": "boolean",
+            "title": "Send Hold"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "telegram_chat_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Chat Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScheduleUpdate",
+        "description": "Any subset of the editable fields. Only ``telegram_chat_id`` may be null (it clears it)."
+      },
+      "TelegramTestRequest": {
+        "properties": {
+          "chat_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Id",
+            "description": "default: TELEGRAM_CHAT_ID"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TelegramTestRequest"
+      },
+      "TelegramTestResponse": {
+        "properties": {
+          "sent": {
+            "type": "boolean",
+            "const": true,
+            "title": "Sent",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "TelegramTestResponse"
       }
     }
   }

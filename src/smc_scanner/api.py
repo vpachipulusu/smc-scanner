@@ -21,8 +21,11 @@ import os
 import re
 import secrets
 import threading
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+import time
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import replace
+from datetime import datetime
 from functools import partial
 from pathlib import Path as FsPath
 from typing import Annotated, Any, Literal
@@ -70,11 +73,24 @@ from smc_scanner.config import (
 )
 from smc_scanner.loaders import make_loader
 from smc_scanner.models import Bias, ScanRow, Status
+from smc_scanner.notify.telegram import SendResult, send_test_message
 from smc_scanner.scanner import ScanOptions, ScanResult, run_scan
+from smc_scanner.schedule.joblog import (
+    MAX_ERROR_CHARS as MAX_JOB_ERROR_CHARS,
+)
+from smc_scanner.schedule.joblog import (
+    JobLogEntry,
+    JobStatus,
+    SqliteJobLogStore,
+)
+from smc_scanner.schedule.runner import (
+    TOKEN_ENV as TELEGRAM_TOKEN_ENV,
+)
 from smc_scanner.schedule.runner import (
     AnalyseFn,
     Clock,
     RunDeps,
+    RunGuard,
     ScanData,
     SchedulerService,
     default_analyse,
@@ -82,7 +98,15 @@ from smc_scanner.schedule.runner import (
     run_schedule,
     telegram_settings_from_env,
 )
-from smc_scanner.schedule.store import Schedule, SqliteScheduleRepository, previous_action
+from smc_scanner.schedule.store import (
+    MAX_CONFIDENCE,
+    MAX_NAME_CHARS,
+    Schedule,
+    ScheduleLimitError,
+    ScheduleNotFoundError,
+    SqliteScheduleRepository,
+    previous_action,
+)
 from smc_scanner.schedule.timing import server_zone_from_env
 from smc_scanner.watchlist import DEFAULT_WATCHLIST, WatchlistError, resolve_symbols
 
@@ -121,11 +145,29 @@ MAX_ROW_ID = 2**63 - 1  # SQLite INTEGER; larger ids would overflow the driver
 AI_UNAVAILABLE_MESSAGE = "AI analysis is unavailable; see the server log"
 CURSOR_PREFIX = "id:"
 
+SCHEDULE_NOT_FOUND_MESSAGE = "Schedule not found"
+SCHEDULE_LIMIT_MESSAGE = "Schedule limit reached"
+SCHEDULE_STORE_MESSAGE = "Schedule database unavailable"
+ALREADY_RUNNING_MESSAGE = "This schedule is already running"
+SCAN_IN_PROGRESS_MESSAGE = "A scan is already in progress"
+STOPPING_MESSAGE = "The scheduler is shutting down"
+TELEGRAM_FAILED_MESSAGE = "Telegram rejected the test message"
+RUN_UNAVAILABLE_MESSAGE = "Run setup is invalid; see the server log"
+TELEGRAM_COOLDOWN_MESSAGE = "A test message was sent a moment ago; try again shortly"
+TELEGRAM_TEST_COOLDOWN_SECONDS = 5.0
+_OMITTED: Any = None  # default of PATCH fields that are omittable but not nullable
+DEFAULT_SCHEDULE_MIN_SCORE = 2
+DEFAULT_LOGS_LIMIT = 50
+MAX_LOGS_LIMIT = 100  # one below the job log's own cap, because one extra row detects "more"
+RUN_NOW_LOCK_TIMEOUT_SECONDS = 0.0  # run-now answers 409 at once instead of queueing behind a scan
+CHAT_ID_REGEX = r"^(?:-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
+
 _scan_lock = threading.Lock()
 _store_init_lock = threading.Lock()  # first-time schema setup must not race itself
 _analyse_lock = (
     threading.Lock()
 )  # one analysis phase at a time, so identical runs never double-call
+_run_guard = RunGuard()  # shared by the scheduler and run-now: one run per schedule at a time
 
 
 # --- response models (the generated client is built from these) ---------------------
@@ -361,6 +403,8 @@ def _build_run_deps(db_path: FsPath, stop: threading.Event | None = None) -> Run
     stop = stop or threading.Event()
     return RunDeps(
         repo=SqliteScheduleRepository(db_path),
+        record=SqliteJobLogStore(db_path).record_run,
+        guard=_run_guard,
         analysis_store=SqliteAnalysisStore(db_path),
         provider_factory=partial(make_provider, AI_PROVIDER_NAME),
         scan=make_scan_fn(),
@@ -729,3 +773,422 @@ def get_analysis(
     if record is None:
         raise HTTPException(status_code=404, detail=NOT_FOUND_MESSAGE)
     return _analysis_out(record)
+
+
+# --- schedules --------------------------------------------------------------------------
+
+ScheduleId = Annotated[int, Path(ge=1, le=MAX_ROW_ID)]
+Frequency = Literal["15m", "1h", "4h", "1d"]  # kept equal to timing.FREQUENCIES by a test
+SymbolName = Annotated[str, Field(pattern=SYMBOL_PATTERN.pattern)]
+ChatId = Annotated[str, Field(pattern=CHAT_ID_REGEX)]
+Symbols = Annotated[list[SymbolName], Field(min_length=1, max_length=MAX_SYMBOLS)]
+SCHEDULE_ERRORS: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorResponse, "description": "No schedule with that id"},
+    503: {"model": ErrorResponse, "description": "Schedule database unavailable"},
+}
+STORE_ERROR_ONLY: dict[int | str, dict[str, Any]] = {503: SCHEDULE_ERRORS[503]}
+
+
+class ScheduleCreate(BaseModel):
+    """A new schedule. Every field but the first five has a default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=MAX_NAME_CHARS)
+    source: ApiSource
+    tf: Timeframe
+    symbols: Symbols
+    frequency: Frequency
+    min_score: int = Field(default=DEFAULT_SCHEDULE_MIN_SCORE, ge=0, le=MAX_AI_MIN_SCORE)
+    min_confidence: float = Field(default=0.0, ge=0, le=MAX_CONFIDENCE)
+    only_on_change: bool = False
+    send_hold: bool = False
+    enabled: bool = True
+    telegram_chat_id: ChatId | None = None
+
+
+class ScheduleUpdate(BaseModel):
+    """Any subset of the editable fields. Only ``telegram_chat_id`` may be null (it clears it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Omittable but not nullable (the schema says so); an absent field is simply not in
+    # ``model_fields_set``, so the ``_OMITTED`` default is never read.
+    name: str = Field(default=_OMITTED, min_length=1, max_length=MAX_NAME_CHARS)
+    source: ApiSource = _OMITTED
+    tf: Timeframe = _OMITTED
+    symbols: Symbols = _OMITTED
+    frequency: Frequency = _OMITTED
+    min_score: int = Field(default=_OMITTED, ge=0, le=MAX_AI_MIN_SCORE)
+    min_confidence: float = Field(default=_OMITTED, ge=0, le=MAX_CONFIDENCE)
+    only_on_change: bool = _OMITTED
+    send_hold: bool = _OMITTED
+    enabled: bool = _OMITTED
+    telegram_chat_id: ChatId | None = None
+
+
+class ScheduleOut(BaseModel):
+    id: int
+    name: str
+    source: ApiSource
+    tf: Timeframe
+    symbols: list[str]
+    frequency: Frequency
+    min_score: int
+    min_confidence: float
+    only_on_change: bool
+    send_hold: bool
+    enabled: bool
+    telegram_chat_id: str | None
+    last_run_at: str | None = Field(max_length=MAX_LABEL_CHARS)
+    next_run_at: str | None = Field(max_length=MAX_LABEL_CHARS)
+
+    @classmethod
+    def from_schedule(cls, schedule: Schedule) -> "ScheduleOut":
+        return cls.model_validate(
+            {
+                **schedule.__dict__,
+                "id": schedule.id or 0,
+                "symbols": list(schedule.symbols),
+                "last_run_at": _iso_or_none(schedule.last_run_at),
+                "next_run_at": _iso_or_none(schedule.next_run_at),
+            }
+        )
+
+
+class ScheduleList(BaseModel):
+    items: list[ScheduleOut]
+
+
+class DeleteResponse(BaseModel):
+    deleted: Literal[True] = True
+
+
+class RunOut(BaseModel):
+    """What a run-now did. Error text is never returned here; see the job log."""
+
+    status: Literal["ok", "failed"]
+    rows: int
+    delivered: int
+    skipped: int
+    error_count: int
+
+
+class JobLogOut(BaseModel):
+    """One job-log row. ``error`` is raw text (already redacted and bounded): render it as
+    text, never as markup."""
+
+    id: int
+    schedule_id: int
+    started_at: str = Field(max_length=MAX_LABEL_CHARS)
+    finished_at: str = Field(max_length=MAX_LABEL_CHARS)
+    duration_ms: int
+    status: JobStatus
+    hits: int
+    delivered: int
+    skipped: int
+    skip_reason: str | None = Field(max_length=MAX_LABEL_CHARS)
+    error: str | None = Field(max_length=MAX_JOB_ERROR_CHARS)
+
+    @classmethod
+    def from_entry(cls, entry: JobLogEntry) -> "JobLogOut":
+        return cls(
+            id=entry.id or 0,
+            schedule_id=entry.schedule_id,
+            started_at=entry.started_at.isoformat(),
+            finished_at=entry.finished_at.isoformat(),
+            duration_ms=entry.duration_ms,
+            status=entry.status,
+            hits=entry.hits,
+            delivered=entry.delivered,
+            skipped=entry.skipped,
+            skip_reason=None if entry.skip_reason is None else _clip(entry.skip_reason),
+            error=None if entry.error is None else _clip(entry.error, MAX_JOB_ERROR_CHARS),
+        )
+
+
+class JobLogPage(BaseModel):
+    items: list[JobLogOut]
+    next_cursor: str | None = Field(default=None, max_length=MAX_CURSOR_CHARS)
+
+
+class TelegramTestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chat_id: ChatId | None = Field(default=None, description="default: TELEGRAM_CHAT_ID")
+
+
+class TelegramTestResponse(BaseModel):
+    sent: Literal[True] = True
+
+
+RunDepsFactory = Callable[[], RunDeps]
+TelegramSender = Callable[[str, str], SendResult]  # bot token, chat id
+
+_schedule_update_lock = threading.Lock()
+_telegram_test_lock = threading.Lock()
+_telegram_test_at = -TELEGRAM_TEST_COOLDOWN_SECONDS  # monotonic time of the last test message
+
+
+def _take_telegram_test_slot() -> None:
+    """429 when a test message went out less than the cooldown ago, so a loop cannot burn the
+    bot's rate budget that real alerts share."""
+    global _telegram_test_at
+    with _telegram_test_lock:
+        now = time.monotonic()
+        if now - _telegram_test_at < TELEGRAM_TEST_COOLDOWN_SECONDS:
+            raise HTTPException(status_code=429, detail=TELEGRAM_COOLDOWN_MESSAGE)
+        _telegram_test_at = now
+
+
+def _iso_or_none(moment: datetime | None) -> str | None:
+    return None if moment is None else moment.isoformat()
+
+
+def _request_run_deps() -> RunDeps:
+    """Fresh run dependencies for run-now: the shared scan lock and guard, the job log recorder."""
+    try:
+        with _store_init_lock:  # first-time schema setup of three stores must not race
+            return _build_run_deps(db_path_from_env())
+    except StoreError as exc:
+        raise _schedule_store_unavailable(exc) from exc
+    except ValueError as exc:  # e.g. a bad SMC_SERVER_TZ
+        log.error("run-now configuration invalid: %s", exc)
+        raise HTTPException(status_code=503, detail=RUN_UNAVAILABLE_MESSAGE) from exc
+
+
+def get_run_deps_factory() -> RunDepsFactory:
+    """A factory, so a missing schedule is a 404 before anything is built. Tests override it."""
+    return _request_run_deps
+
+
+def _send_telegram_test(token: str, chat_id: str) -> SendResult:
+    return send_test_message(token, chat_id)
+
+
+def get_telegram_sender() -> TelegramSender:
+    """Tests override this so nothing leaves the machine."""
+    return _send_telegram_test
+
+
+RunDepsFactoryDep = Annotated[RunDepsFactory, Depends(get_run_deps_factory)]
+TelegramSenderDep = Annotated[TelegramSender, Depends(get_telegram_sender)]
+
+
+def _schedule_store_unavailable(exc: StoreError) -> HTTPException:
+    log.error("schedule store failed: %s", exc)  # the path stays in the log
+    return HTTPException(status_code=503, detail=SCHEDULE_STORE_MESSAGE)
+
+
+@contextmanager
+def _schedule_store_errors() -> Iterator[None]:
+    """Map the stores' errors to the API's: not found, the cap, or a fixed 503."""
+    try:
+        yield
+    except ScheduleNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=SCHEDULE_NOT_FOUND_MESSAGE) from exc
+    except ScheduleLimitError as exc:
+        raise HTTPException(status_code=409, detail=SCHEDULE_LIMIT_MESSAGE) from exc
+    except StoreError as exc:
+        raise _schedule_store_unavailable(exc) from exc
+
+
+def _open_schedules() -> SqliteScheduleRepository:
+    with _schedule_store_errors(), _store_init_lock:
+        return SqliteScheduleRepository(db_path_from_env())
+
+
+def _open_job_log() -> SqliteJobLogStore:
+    with _schedule_store_errors(), _store_init_lock:
+        return SqliteJobLogStore(db_path_from_env())
+
+
+def _existing(repo: SqliteScheduleRepository, schedule_id: int) -> Schedule:
+    with _schedule_store_errors():
+        schedule = repo.get(schedule_id)
+    if schedule is None:
+        raise HTTPException(status_code=404, detail=SCHEDULE_NOT_FOUND_MESSAGE)
+    return schedule
+
+
+def _invalid(exc: ValueError) -> HTTPException:
+    log.info("invalid schedule: %s", exc)
+    return HTTPException(status_code=422, detail=INVALID_REQUEST_MESSAGE)
+
+
+@app.get("/schedules", response_model=ScheduleList, tags=["schedules"], responses=STORE_ERROR_ONLY)
+def list_schedules(_: InternalKeyDep) -> ScheduleList:
+    repo = _open_schedules()
+    with _schedule_store_errors():
+        found = repo.list_schedules()
+    return ScheduleList(items=[ScheduleOut.from_schedule(s) for s in found])
+
+
+@app.post(
+    "/schedules",
+    response_model=ScheduleOut,
+    status_code=201,
+    tags=["schedules"],
+    responses={
+        409: {"model": ErrorResponse, "description": "The schedule limit is reached"},
+        **STORE_ERROR_ONLY,
+    },
+)
+def create_schedule(body: ScheduleCreate, _: InternalKeyDep) -> ScheduleOut:
+    try:
+        schedule = Schedule(**{**body.model_dump(), "symbols": tuple(body.symbols)})
+    except ValueError as exc:  # e.g. a blank name the field limits cannot see
+        raise _invalid(exc) from exc
+    repo = _open_schedules()
+    with _schedule_store_errors():
+        return ScheduleOut.from_schedule(repo.add(schedule))
+
+
+@app.get(
+    "/schedules/{schedule_id}",
+    response_model=ScheduleOut,
+    tags=["schedules"],
+    responses=SCHEDULE_ERRORS,
+)
+def get_schedule(schedule_id: ScheduleId, _: InternalKeyDep) -> ScheduleOut:
+    return ScheduleOut.from_schedule(_existing(_open_schedules(), schedule_id))
+
+
+@app.patch(
+    "/schedules/{schedule_id}",
+    response_model=ScheduleOut,
+    tags=["schedules"],
+    responses=SCHEDULE_ERRORS,
+)
+def update_schedule(
+    schedule_id: ScheduleId, body: ScheduleUpdate, _: InternalKeyDep
+) -> ScheduleOut:
+    """Change some fields. Changing the frequency or the enabled flag picks a fresh next slot."""
+    repo = _open_schedules()
+    changes = {name: getattr(body, name) for name in body.model_fields_set}
+    if "symbols" in changes:
+        changes["symbols"] = tuple(changes["symbols"])
+    with _schedule_update_lock:  # read-merge-write must not interleave with another PATCH
+        current = _existing(repo, schedule_id)
+        try:
+            merged = replace(current, **changes)  # re-runs the Schedule validation
+        except ValueError as exc:
+            raise _invalid(exc) from exc
+        with _schedule_store_errors():
+            return ScheduleOut.from_schedule(repo.update(merged))
+
+
+@app.delete(
+    "/schedules/{schedule_id}",
+    response_model=DeleteResponse,
+    tags=["schedules"],
+    responses=SCHEDULE_ERRORS,
+)
+def delete_schedule(schedule_id: ScheduleId, _: InternalKeyDep) -> DeleteResponse:
+    """Delete a schedule, its sent-alert marks and its job log."""
+    repo = _open_schedules()
+    with _schedule_store_errors():
+        deleted = repo.delete(schedule_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=SCHEDULE_NOT_FOUND_MESSAGE)
+    try:
+        _open_job_log().prune_schedule(schedule_id)
+    except (HTTPException, StoreError) as exc:  # the next job-log open sweeps orphans anyway
+        log.warning("job log of deleted schedule %s not pruned: %s", schedule_id, exc)
+    return DeleteResponse()
+
+
+@app.post(
+    "/schedules/{schedule_id}/run",
+    response_model=RunOut,
+    tags=["schedules"],
+    responses={
+        **SCHEDULE_ERRORS,
+        409: {"model": ErrorResponse, "description": "This schedule or a scan is already running"},
+        503: {"model": ErrorResponse, "description": "Schedule database or run setup unavailable"},
+    },
+)
+def run_schedule_now(
+    schedule_id: ScheduleId, _: InternalKeyDep, make_deps: RunDepsFactoryDep
+) -> RunOut:
+    """Run the schedule once now, waiting for the result.
+
+    Takes the same scan lock as ``/scan`` and never queues behind it: 409 when this schedule is
+    already running or a scan holds the lock. The error text of a failed run is in the job log.
+    """
+    schedule = _existing(_open_schedules(), schedule_id)
+    deps = replace(make_deps(), lock_timeout=RUN_NOW_LOCK_TIMEOUT_SECONDS)
+    report = run_schedule(schedule, deps)
+    if report.status == "already_running":
+        raise HTTPException(status_code=409, detail=ALREADY_RUNNING_MESSAGE)
+    if report.status == "busy":
+        raise HTTPException(status_code=409, detail=SCAN_IN_PROGRESS_MESSAGE)
+    if report.status == "stopped":
+        raise HTTPException(status_code=503, detail=STOPPING_MESSAGE)
+    return RunOut(
+        status=report.status,
+        rows=report.rows,
+        delivered=report.delivered,
+        skipped=len(report.skipped),
+        error_count=len(report.errors),
+    )
+
+
+@app.get(
+    "/schedules/{schedule_id}/logs",
+    response_model=JobLogPage,
+    tags=["schedules"],
+    responses=SCHEDULE_ERRORS,
+)
+def list_schedule_logs(
+    schedule_id: ScheduleId,
+    _: InternalKeyDep,
+    limit: Annotated[int, Query(ge=1, le=MAX_LOGS_LIMIT)] = DEFAULT_LOGS_LIMIT,
+    cursor: Annotated[str | None, Query(max_length=MAX_CURSOR_CHARS)] = None,
+) -> JobLogPage:
+    """Job-log rows of one schedule, newest first. Pass ``next_cursor`` back for the next page."""
+    before_id = None if cursor is None else _decode_cursor(cursor)
+    _existing(_open_schedules(), schedule_id)
+    logs = _open_job_log()
+    with _schedule_store_errors():
+        entries = logs.list_entries(schedule_id=schedule_id, limit=limit + 1, before_id=before_id)
+    page = entries[:limit]
+    more = len(entries) > limit and page[-1].id is not None
+    return JobLogPage(
+        items=[JobLogOut.from_entry(entry) for entry in page],
+        next_cursor=_encode_cursor(page[-1].id or 0) if more else None,
+    )
+
+
+@app.post(
+    "/telegram/test",
+    response_model=TelegramTestResponse,
+    tags=["schedules"],
+    responses={
+        502: {"model": ErrorResponse, "description": "Telegram did not accept the message"},
+        503: {"model": ErrorResponse, "description": "TELEGRAM_BOT_TOKEN is not set"},
+        429: {"model": ErrorResponse, "description": "Another test message was sent just now"},
+    },
+)
+def send_telegram_test(
+    _: InternalKeyDep, send: TelegramSenderDep, body: TelegramTestRequest | None = None
+) -> TelegramTestResponse:
+    """Send a fixed test message to ``chat_id`` (default ``TELEGRAM_CHAT_ID``). The token is read
+    from the environment only and never appears in a response or a log."""
+    token, default_chat = telegram_settings_from_env()
+    if not token:
+        raise HTTPException(
+            status_code=503, detail=f"Telegram is disabled: {TELEGRAM_TOKEN_ENV} is not set"
+        )
+    chat = (body.chat_id if body else None) or default_chat
+    if not chat:
+        raise HTTPException(status_code=422, detail="No chat id: pass chat_id or set the default")
+    _take_telegram_test_slot()
+    try:
+        result = send(token, chat)
+    except Exception as exc:  # the notifier never raises; a fake or a bug must not leak the token
+        log.error("telegram test failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=502, detail=TELEGRAM_FAILED_MESSAGE) from None
+    if not result.ok:
+        raise HTTPException(status_code=502, detail=TELEGRAM_FAILED_MESSAGE)
+    return TelegramTestResponse()
