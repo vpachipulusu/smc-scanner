@@ -19,7 +19,8 @@ class Confluence:
         return int(self.aligned) + int(self.in_ote) + int(self.trendline_ok) + int(self.stacked)
 
 
-def _aligned(state: ZoneState, structure: Structure) -> bool:
+def is_aligned(state: ZoneState, structure: Structure) -> bool:
+    """The zone direction matches a trending bias; a range is never aligned."""
     if structure.bias == "range":
         return False
     return (structure.bias == "bullish") == (state.zone.direction == BULLISH)
@@ -57,7 +58,7 @@ def score_zone(
     state: ZoneState, structure: Structure, valid: list[ZoneState], ohlc: pd.DataFrame
 ) -> Confluence:
     return Confluence(
-        aligned=_aligned(state, structure),
+        aligned=is_aligned(state, structure),
         in_ote=_in_ote(state, structure),
         trendline_ok=_trendline_ok(state, structure, ohlc),
         stacked=_stacked(state, valid),
