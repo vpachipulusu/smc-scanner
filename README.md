@@ -52,6 +52,13 @@ the MT5 connection is process-wide. `GET /scan` returns `rows` and per-symbol `f
 (503 when nothing could be loaded); `GET /config` returns choices, defaults, limits and the
 watchlist for the scan form. Every error body is `{ "success": false, "error": "..." }`.
 
+#### Scheduler (opt-in)
+
+Set `SMC_SCHEDULER=1` to run saved schedules inside the API process (off by default, so
+tests and local runs start no threads). Scheduled scans share the `/scan` lock. It uses
+`SMC_DB_PATH`, `SMC_SERVER_TZ`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from the
+environment. Run a single uvicorn worker (no `--workers N`), or every worker would scan and alert.
+
 ## Web page (`nextjs-frontend/`)
 
 A Next.js 16 page at `/scan` that runs the same scan through the API and shows the rows with

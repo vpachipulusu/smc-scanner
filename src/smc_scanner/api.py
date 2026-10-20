@@ -21,7 +21,10 @@ import os
 import re
 import secrets
 import threading
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from functools import partial
+from pathlib import Path as FsPath
 from typing import Annotated, Any, Literal
 
 from dotenv import load_dotenv
@@ -45,6 +48,7 @@ from smc_scanner.ai.analyst import Status as AiStatus
 from smc_scanner.ai.providers import API_KEY_ENV, AiError, AiProvider, make_provider
 from smc_scanner.ai.store import (
     AnalysisRecord,
+    AnalysisStore,
     SqliteAnalysisStore,
     StoreError,
     db_path_from_env,
@@ -67,6 +71,19 @@ from smc_scanner.config import (
 from smc_scanner.loaders import make_loader
 from smc_scanner.models import Bias, ScanRow, Status
 from smc_scanner.scanner import ScanOptions, ScanResult, run_scan
+from smc_scanner.schedule.runner import (
+    AnalyseFn,
+    Clock,
+    RunDeps,
+    ScanData,
+    SchedulerService,
+    default_analyse,
+    make_scan_fn,
+    run_schedule,
+    telegram_settings_from_env,
+)
+from smc_scanner.schedule.store import Schedule, SqliteScheduleRepository, previous_action
+from smc_scanner.schedule.timing import server_zone_from_env
 from smc_scanner.watchlist import DEFAULT_WATCHLIST, WatchlistError, resolve_symbols
 
 log = logging.getLogger(__name__)
@@ -79,6 +96,10 @@ SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9._#@\-]{1,32}$")
 DEFAULT_ALLOWED_HOSTS = "127.0.0.1,localhost"
 INTERNAL_KEY_HEADER = "X-Internal-Key"
 INTERNAL_KEY_ENV = "SMC_INTERNAL_KEY"
+SCHEDULER_ENV = "SMC_SCHEDULER"
+SCHEDULER_TRUTHY = frozenset({"1", "true", "yes", "on"})
+SCHEDULER_FALSY = frozenset({"0", "false", "no", "off"})
+ANALYSE_LOCK_POLL_SECONDS = 1.0
 
 INVALID_REQUEST_MESSAGE = "Invalid request"
 INTERNAL_ERROR_MESSAGE = "Internal server error"
@@ -306,7 +327,79 @@ def require_internal_key(
 
 InternalKeyDep = Annotated[None, Depends(require_internal_key)]
 
+
+def _scheduler_enabled() -> bool:
+    value = os.environ.get(SCHEDULER_ENV, "").strip().lower()
+    if value and value not in SCHEDULER_TRUTHY and value not in SCHEDULER_FALSY:
+        log.warning("%s has an unrecognised value, the scheduler stays off", SCHEDULER_ENV)
+    return value in SCHEDULER_TRUTHY
+
+
+def _analyse_under_lock(stop: threading.Event) -> AnalyseFn:
+    """``default_analyse`` under the lock ``/analyse`` uses, so a scheduled run and a request for
+    the same hit never both call the provider. Waiting for the lock gives up once ``stop`` is set,
+    so shutdown is not held up behind a slow ``/analyse``."""
+
+    def analyse(
+        data: ScanData, schedule: Schedule, provider: AiProvider, store: AnalysisStore, clock: Clock
+    ) -> list[AnalysisResult]:
+        while not _analyse_lock.acquire(timeout=ANALYSE_LOCK_POLL_SECONDS):
+            if stop.is_set():
+                raise RuntimeError("stopped while waiting for the analysis lock")
+        try:
+            return default_analyse(data, schedule, provider, store, clock)
+        finally:
+            _analyse_lock.release()
+
+    return analyse
+
+
+def _build_run_deps(db_path: FsPath, stop: threading.Event | None = None) -> RunDeps:
+    """Everything a scheduled run needs; the scan lock is the one ``/scan`` uses. The Telegram
+    token comes from the environment only and is never logged."""
+    token, chat = telegram_settings_from_env()
+    stop = stop or threading.Event()
+    return RunDeps(
+        repo=SqliteScheduleRepository(db_path),
+        analysis_store=SqliteAnalysisStore(db_path),
+        provider_factory=partial(make_provider, AI_PROVIDER_NAME),
+        scan=make_scan_fn(),
+        analyse=_analyse_under_lock(stop),
+        scan_lock=_scan_lock,
+        previous_action=partial(previous_action, db_path),
+        telegram_token=token,
+        default_chat_id=chat,
+        zone=server_zone_from_env(),
+        stop_event=stop,
+    )
+
+
+def _build_scheduler() -> SchedulerService:
+    deps = _build_run_deps(db_path_from_env())
+    return SchedulerService(
+        deps.repo, partial(run_schedule, deps=deps), zone=deps.zone, stop_event=deps.stop_event
+    )
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Run the scheduler for the life of the app when ``SMC_SCHEDULER`` is on (off by default).
+    A fresh service is built per startup, so start-stop-start works."""
+    if not _scheduler_enabled():
+        yield
+        return
+    if os.environ.get("WEB_CONCURRENCY", "1").strip() not in {"", "1"}:
+        log.warning("%s with several workers: every worker would scan and alert", SCHEDULER_ENV)
+    service = _build_scheduler()  # misconfiguration fails startup loudly: the user opted in
+    try:
+        service.start()
+        yield
+    finally:
+        service.stop()
+
+
 app = FastAPI(
+    lifespan=_lifespan,
     title="SMC scanner",
     version=__version__,
     description="Screens a watchlist for price touching or near fresh order blocks and "
