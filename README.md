@@ -79,6 +79,25 @@ cd nextjs-frontend && npm run generate:client    # regenerates src/lib/api/gener
 Checks: `npm run lint && npm run typecheck && npm run test:coverage` (Vitest, 80% thresholds).
 There is no Playwright suite yet.
 
+### AI analysis from the CLI
+
+`--ai` analyses the hits after the scan and adds `ai_action`, `ai_confidence`, `ai_entry`,
+`ai_stop`, `ai_target` and `ai_note` columns to the table and the CSV (the columns are absent
+without `--ai`). Verdicts are advisory only; nothing places an order.
+
+```bash
+uv run smc-scan --demo --ai --ai-provider fake --ai-min-score 0   # offline demo, no key
+uv run smc-scan --source mt5 --tf 1h --ai --ai-min-score 3 --ai-max 3
+```
+
+- `--ai-provider`: `claude` (default; needs `ANTHROPIC_API_KEY`, optional `AI_MODEL`) or `fake`
+  (canned HOLD replies, only with `--demo`). `--ai-min-score` (0-4, default 2) and `--ai-max`
+  (1-50, default 5) limit which rows are sent and how many per run.
+- Verdicts are stored in SQLite at `SMC_DB_PATH` (default `./smc.db`, git-ignored). A bar that
+  already has a verdict is not sent again, so `--every N` pays only for new bars.
+- An AI problem (missing key, provider error, database error) never hides the scan: the table
+  and CSV are still written and the affected rows carry a short note.
+
 ### MetaTrader 5
 
 The loader attaches to the MT5 terminal installed on this machine with `mt5.initialize()`.
