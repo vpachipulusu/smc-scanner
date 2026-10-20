@@ -59,6 +59,12 @@ class AiReply:
 
 
 class AiProvider(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def model(self) -> str | None: ...
+
     def complete(self, system: str, user: str) -> AiReply: ...
 
 
@@ -277,6 +283,7 @@ class FakeProvider:
     """Replays canned replies in order and records each (system, user) call."""
 
     name = "fake"
+    model = "fake"
 
     def __init__(self, replies: Iterable[AiReply | str] = ()) -> None:
         self._replies = [r if isinstance(r, AiReply) else AiReply(r, 0, 0, "fake") for r in replies]

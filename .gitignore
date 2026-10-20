@@ -9,3 +9,8 @@ __pycache__/
 htmlcov/
 scan_results.csv
 dist/
+smc.db*
+*.db
+*.sqlite*
+*.db-wal
+*.db-shm
