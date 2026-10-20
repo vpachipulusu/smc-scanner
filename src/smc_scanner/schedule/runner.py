@@ -120,6 +120,7 @@ ScanFn = Callable[[Schedule], ScanData]
 AnalyseFn = Callable[[ScanData, Schedule, AiProvider, AnalysisStore, Clock], list[AnalysisResult]]
 Sender = Callable[[str, str, str], SendResult]  # bot token, chat id, HTML text
 PreviousAction = Callable[[str, str, str], str | None]  # symbol, timeframe, bar time
+JobRecorder = Callable[["RunReport", datetime, datetime], None]  # report, started, finished
 
 
 @dataclass(frozen=True)
@@ -178,6 +179,10 @@ def _default_send(token: str, chat_id: str, text: str) -> SendResult:
     return send_message(token, chat_id, text)
 
 
+def _no_record(report: RunReport, started: datetime, finished: datetime) -> None:
+    """Default job-log recorder: records nothing."""
+
+
 @dataclass(frozen=True)
 class RunDeps:
     """Everything a run needs, injected so tests use fakes, a temp DB and a fake clock."""
@@ -188,7 +193,7 @@ class RunDeps:
     scan: ScanFn
     scan_lock: ScanLock
     previous_action: PreviousAction
-    telegram_token: str
+    telegram_token: str = field(repr=False)  # a secret: keep it out of repr() and logs
     send: Sender = _default_send
     clock: Clock = _utc_now
     default_chat_id: str | None = None
@@ -198,6 +203,7 @@ class RunDeps:
     grace: timedelta = GRACE
     stop_event: threading.Event = field(default_factory=threading.Event)
     lock_timeout: float = SCAN_LOCK_TIMEOUT_SECONDS
+    record: JobRecorder = _no_record  # job log: called once per run, errors are swallowed
 
 
 def telegram_settings_from_env() -> tuple[str, str | None]:
@@ -394,7 +400,23 @@ def _run(schedule: Schedule, deps: RunDeps) -> RunReport:
 
 
 def run_schedule(schedule: Schedule, deps: RunDeps) -> RunReport:
-    """One full run of ``schedule``. See the module docstring for the lock and failure contracts."""
+    """One full run of ``schedule``. See the module docstring for the lock and failure contracts.
+
+    ``deps.record`` is called exactly once per completed run (including failed and postponed
+    ones; not when ``run_schedule`` raises ``ValueError`` for a schedule without an id) with the
+    final report and the UTC start/finish times. If it raises, only the exception class name is
+    logged and the run is unaffected.
+    """
+    started = deps.clock()
+    report = _run_once(schedule, deps)
+    try:
+        deps.record(report, started, deps.clock())
+    except Exception as exc:  # the job log must never break a run
+        log.error("schedule %s: job log not recorded (%s)", report.schedule_id, type(exc).__name__)
+    return report
+
+
+def _run_once(schedule: Schedule, deps: RunDeps) -> RunReport:
     if schedule.id is None:
         raise ValueError("a schedule needs an id to run")
     sid = schedule.id
