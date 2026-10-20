@@ -12,6 +12,7 @@
     "test": "vitest",
     "test:unit": "vitest run --dir src/__tests__/unit",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "format": "prettier --write \"**/*.{ts,tsx,md,mjs}\"",
     "generate:client": "openapi-ts",
     "check:client": "node scripts/check-openapi-client.mjs"
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "0.95.0",
+    "@playwright/test": "~1.58.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
