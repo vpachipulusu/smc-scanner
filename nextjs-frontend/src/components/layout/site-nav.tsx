@@ -11,10 +11,11 @@ type NavItem = { label: string; href: string };
 const LINKS: readonly NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Scan', href: '/scan' },
+  { label: 'Analyses', href: '/analyses' },
 ];
 
 /** Pages that are not built yet. Shown, but not links, so nobody lands on a 404. */
-const SOON: readonly string[] = ['Analyses', 'Automation', 'Settings'];
+const SOON: readonly string[] = ['Automation', 'Settings'];
 
 const ITEM_CLASS =
   'inline-flex min-h-10 items-center rounded-md px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
