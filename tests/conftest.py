@@ -1,6 +1,6 @@
 """Hand-built OHLC helpers shared by the tests."""
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 
 import pandas as pd
 import pytest
@@ -41,6 +41,16 @@ FVG_SETUP: list[Candle] = [
 FVG_TOP = 103.0
 FVG_BOTTOM = 101.0
 TOUCH_LAST: Candle = (105.0, 106.0, 102.5, 103.0)  # dips into the gap
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits() -> Iterator[None]:
+    """The API's limiters are process-wide: start and end every test with empty windows."""
+    from smc_scanner import api
+
+    api.reset_rate_limits()
+    yield
+    api.reset_rate_limits()
 
 
 @pytest.fixture

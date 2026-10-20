@@ -13,7 +13,10 @@ client and the frontend's ``callBackend`` see one shape. Sources are ``mt5`` and
 the csv source takes file paths, so it is CLI-only. Scans are serialised with a lock
 because the MT5 connection is process-wide.
 
-Run a single worker: the scan lock, run guard and cooldowns are process-local.
+Run a single worker: the scan lock, run guard, cooldowns, rate limits and AI budget
+reservations are process-local. ``POST /analyse`` and ``GET /scan`` are rate limited per endpoint
+(429 with ``Retry-After``); AI calls are capped per UTC day by ``AI_MAX_CALLS_PER_DAY`` and
+``AI_MAX_COST_PER_DAY`` (429 once reached, unset means unlimited).
 """
 
 import base64
@@ -23,9 +26,10 @@ import math
 import os
 import re
 import secrets
+import sys
 import threading
 import time
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
 from datetime import datetime
@@ -51,6 +55,14 @@ from smc_scanner.ai.analyst import (
     hit_inputs_from_ohlc,
 )
 from smc_scanner.ai.analyst import Status as AiStatus
+from smc_scanner.ai.budget import (
+    CALLS_ENV,
+    COST_ENV,
+    BudgetConfigError,
+    BudgetExceededError,
+    BudgetGuard,
+    limits_from_env,
+)
 from smc_scanner.ai.providers import API_KEY_ENV, AiError, AiProvider, make_provider
 from smc_scanner.ai.store import (
     AnalysisRecord,
@@ -77,6 +89,7 @@ from smc_scanner.config import (
 from smc_scanner.loaders import make_loader
 from smc_scanner.models import Bias, ScanRow, Status
 from smc_scanner.notify.telegram import SendResult, send_test_message
+from smc_scanner.ratelimit import RateLimiter
 from smc_scanner.scanner import ScanOptions, ScanResult, run_scan
 from smc_scanner.schedule.joblog import (
     MAX_ERROR_CHARS as MAX_JOB_ERROR_CHARS,
@@ -146,6 +159,13 @@ MAX_CURSOR_CHARS = 64
 MAX_LABEL_CHARS = 100
 MAX_ROW_ID = 2**63 - 1  # SQLite INTEGER; larger ids would overflow the driver
 AI_UNAVAILABLE_MESSAGE = "AI analysis is unavailable; see the server log"
+BUDGET_MESSAGE = "The daily AI budget is used up; try again after it resets"
+BUDGET_CONFIG_MESSAGE = "AI budget settings are invalid; see the server log"
+RATE_LIMIT_MESSAGE = "Too many requests; try again shortly"
+SCAN_RATE_LIMIT = (20, 60.0)  # requests, per window seconds
+ANALYSE_RATE_LIMIT = (6, 60.0)  # each run can spend money, so it is the tightest
+BIND_HOST_ENVS = ("SMC_API_HOST", "UVICORN_HOST")  # where a launcher can say what it binds to
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
 CURSOR_PREFIX = "id:"
 
 SCHEDULE_NOT_FOUND_MESSAGE = "Schedule not found"
@@ -184,6 +204,38 @@ class ErrorResponse(BaseModel):
     success: Literal[False] = False
     error: str
 
+
+RATE_LIMITERS: dict[str, RateLimiter] = {
+    "scan": RateLimiter(*SCAN_RATE_LIMIT),
+    "analyse": RateLimiter(*ANALYSE_RATE_LIMIT),
+}
+RETRY_AFTER_HEADER: dict[str, Any] = {
+    "Retry-After": {"description": "Seconds to wait before retrying", "schema": {"type": "integer"}}
+}
+
+
+def reset_rate_limits() -> None:
+    """Empty every endpoint's window (tests)."""
+    for limiter in RATE_LIMITERS.values():
+        limiter.reset()
+
+
+def _rate_limit(name: str) -> Callable[[], None]:
+    """A dependency that takes one hit from the named limiter, looked up per request so tests
+    can swap it. List it after ``InternalKeyDep``: unauthenticated calls must not use the quota."""
+
+    def take() -> None:
+        wait = RATE_LIMITERS[name].take()
+        if wait is not None:
+            raise HTTPException(
+                status_code=429, detail=RATE_LIMIT_MESSAGE, headers={"Retry-After": str(wait)}
+            )
+
+    return take
+
+
+ScanRateDep = Annotated[None, Depends(_rate_limit("scan"))]
+AnalyseRateDep = Annotated[None, Depends(_rate_limit("analyse"))]
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {"model": ErrorResponse, "description": "Missing or wrong internal key"},
@@ -388,10 +440,12 @@ def _scheduler_enabled() -> bool:
     return value in SCHEDULER_TRUTHY
 
 
-def _analyse_under_lock(stop: threading.Event) -> AnalyseFn:
+def _analyse_under_lock(stop: threading.Event, budget: BudgetGuard) -> AnalyseFn:
     """``default_analyse`` under the lock ``/analyse`` uses, so a scheduled run and a request for
     the same hit never both call the provider. Waiting for the lock gives up once ``stop`` is set,
-    so shutdown is not held up behind a slow ``/analyse``."""
+    so shutdown is not held up behind a slow ``/analyse``. Every analysis phase holds that lock,
+    so reservations never overlap and each phase may use its own guard over the same stored
+    usage."""
 
     def analyse(
         data: ScanData, schedule: Schedule, provider: AiProvider, store: AnalysisStore, clock: Clock
@@ -400,7 +454,7 @@ def _analyse_under_lock(stop: threading.Event) -> AnalyseFn:
             if stop.is_set():
                 raise RuntimeError("stopped while waiting for the analysis lock")
         try:
-            return default_analyse(data, schedule, provider, store, clock)
+            return default_analyse(data, schedule, provider, store, clock, budget)
         finally:
             _analyse_lock.release()
 
@@ -412,14 +466,18 @@ def _build_run_deps(db_path: FsPath, stop: threading.Event | None = None) -> Run
     token comes from the environment only and is never logged."""
     token, chat = telegram_settings_from_env()
     stop = stop or threading.Event()
+    analysis_store = SqliteAnalysisStore(db_path)
+    budget = BudgetGuard(
+        limits_from_env(), analysis_store.usage_for_day
+    )  # invalid caps: ValueError
     return RunDeps(
         repo=SqliteScheduleRepository(db_path),
         record=SqliteJobLogStore(db_path).record_run,
         guard=_run_guard,
-        analysis_store=SqliteAnalysisStore(db_path),
+        analysis_store=analysis_store,
         provider_factory=partial(make_provider, AI_PROVIDER_NAME),
         scan=make_scan_fn(),
-        analyse=_analyse_under_lock(stop),
+        analyse=_analyse_under_lock(stop, budget),
         scan_lock=_scan_lock,
         previous_action=partial(previous_action, db_path),
         telegram_token=token,
@@ -436,16 +494,56 @@ def _build_scheduler() -> SchedulerService:
     )
 
 
+def _is_loopback(host: str) -> bool:
+    return host.strip().lower() in LOOPBACK_HOSTS
+
+
+def _argv_host(argv: Sequence[str]) -> str:
+    """The value of a ``--host`` flag in a launcher's command line, or ""."""
+    for index, arg in enumerate(argv):
+        if arg == "--host" and index + 1 < len(argv):
+            return argv[index + 1]
+        if arg.startswith("--host="):
+            return arg.removeprefix("--host=")
+    return ""
+
+
+def startup_warnings(env: Mapping[str, str], argv: Sequence[str] = ()) -> list[str]:
+    """Configuration worth a log line at startup. Names variables only, never their values.
+
+    The server cannot see its own bind address, so "exposed" means a launcher said so
+    (``SMC_API_HOST`` / ``UVICORN_HOST`` / a ``--host`` flag in ``argv``) or
+    ``SMC_API_ALLOWED_HOSTS`` lists a non-loopback name.
+    """
+    warnings: list[str] = []
+    named = [env.get(name, "") for name in BIND_HOST_ENVS]
+    named += [_argv_host(argv), *env.get("SMC_API_ALLOWED_HOSTS", "").split(",")]
+    exposed = any(host.strip() and not _is_loopback(host) for host in named)
+    if exposed and not env.get(INTERNAL_KEY_ENV, ""):
+        warnings.append(
+            f"{INTERNAL_KEY_ENV} is not set but the API is reachable beyond loopback: "
+            "anyone who can reach it can scan and spend AI budget"
+        )
+    if not env.get(CALLS_ENV, "").strip() and not env.get(COST_ENV, "").strip():
+        warnings.append(f"neither {CALLS_ENV} nor {COST_ENV} is set: AI spend is unlimited")
+    return warnings
+
+
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Run the scheduler for the life of the app when ``SMC_SCHEDULER`` is on (off by default).
     A fresh service is built per startup, so start-stop-start works."""
+    for warning in startup_warnings(os.environ, sys.argv):
+        log.warning("%s", warning)
     if not _scheduler_enabled():
         yield
         return
     if os.environ.get("WEB_CONCURRENCY", "1").strip() not in {"", "1"}:
         log.warning("%s with several workers: every worker would scan and alert", SCHEDULER_ENV)
-    service = _build_scheduler()  # misconfiguration fails startup loudly: the user opted in
+    # misconfiguration fails startup loudly: the user opted in. That includes an invalid
+    # AI_MAX_* cap (the message names the variable); caps are read once here, so a changed
+    # value reaches scheduled runs after a restart, while /analyse reads them per request.
+    service = _build_scheduler()
     try:
         service.start()
         yield
@@ -531,9 +629,21 @@ def _to_response(source: ApiSource, tf: Timeframe, result: ScanResult) -> ScanRe
     )
 
 
-@app.get("/scan", response_model=ScanResponse, tags=["scanner"])
+@app.get(
+    "/scan",
+    response_model=ScanResponse,
+    tags=["scanner"],
+    responses={
+        429: {
+            "model": ErrorResponse,
+            "description": "Too many scans; see the Retry-After header",
+            "headers": RETRY_AFTER_HEADER,
+        }
+    },
+)
 def scan(
     _: InternalKeyDep,
+    __: ScanRateDep,
     source: ApiSource = "mt5",
     tf: Timeframe = DEFAULT_TIMEFRAME,
     symbols: Annotated[
@@ -607,6 +717,26 @@ def _store_unavailable(exc: StoreError) -> HTTPException:
     return HTTPException(status_code=503, detail=STORE_UNAVAILABLE_MESSAGE)
 
 
+def _budget_guard(store: SqliteAnalysisStore) -> BudgetGuard:
+    """The daily caps from the environment over the store's usage. A bad setting is a 503,
+    never silently unlimited. Built per request: the analysis lock serialises the phases that
+    reserve, so a shared guard would add nothing."""
+    try:
+        return BudgetGuard(limits_from_env(), store.usage_for_day)
+    except BudgetConfigError as exc:
+        log.error("AI budget configuration invalid: %s", exc)  # names the variable, not the value
+        raise HTTPException(status_code=503, detail=BUDGET_CONFIG_MESSAGE) from exc
+
+
+def _budget_refused(exc: BudgetExceededError) -> HTTPException:
+    log.warning("AI request refused: %s", exc)
+    return HTTPException(
+        status_code=429,
+        detail=BUDGET_MESSAGE,
+        headers={"Retry-After": str(exc.retry_after_seconds)},
+    )
+
+
 def _note(result: AnalysisResult) -> str:
     verdict = result.verdict
     if result.status == "failed":
@@ -635,21 +765,39 @@ def _provider_failed_everywhere(results: list[AnalysisResult]) -> bool:
     response_model=AnalyseResponse,
     tags=["analyses"],
     responses={
+        429: {
+            "model": ErrorResponse,
+            "description": "Rate limited, or the daily AI budget is used up; see Retry-After",
+            "headers": RETRY_AFTER_HEADER,
+        },
         502: {"model": ErrorResponse, "description": "The AI provider failed for the whole run"},
-        503: {"model": ErrorResponse, "description": "Nothing loaded, AI disabled or no database"},
+        503: {
+            "model": ErrorResponse,
+            "description": "Nothing loaded, AI disabled, no database or invalid budget settings",
+        },
     },
 )
 def analyse(
-    body: AnalyseRequest, _: InternalKeyDep, make_ai_provider: ProviderFactoryDep
+    body: AnalyseRequest,
+    _: InternalKeyDep,
+    __: AnalyseRateDep,
+    make_ai_provider: ProviderFactoryDep,
 ) -> AnalyseResponse:
     """Scan, then ask the AI about the best hits; every row comes back with its AI result.
 
     The scan runs under the scan lock, which is released before any provider call. The
     analysis phase is serialised by its own lock, so concurrent identical runs queue and the
     second one finds the first one's verdicts instead of calling the provider again.
+
+    429 when the daily AI budget is used up (``AI_MAX_CALLS_PER_DAY`` / ``AI_MAX_COST_PER_DAY``)
+    or the endpoint is rate limited; ``Retry-After`` says when to try again. Hits already
+    analysed are served from the database even then, since they need no call. A budget refusal
+    comes when a call is needed: rows analysed before it stay in the database (read them from
+    ``GET /analyses``) but are not in the 429 body.
     """
     provider = make_ai_provider()
     store = _open_store(read_only=False)
+    budget = _budget_guard(store)
     options = ScanOptions(swing_length=body.swing, near_atr=body.near, all_touches=body.all_touches)
     wanted = _symbols(body.source, ",".join(body.symbols) if body.symbols else None)
     with _scan_lock:
@@ -667,7 +815,10 @@ def analyse(
                 timeframe=body.tf,
                 min_score=body.min_score,
                 max_rows=body.max_rows,
+                budget=budget,
             )
+    except BudgetExceededError as exc:
+        raise _budget_refused(exc) from exc
     except StoreError as exc:
         raise _store_unavailable(exc) from exc
     if _provider_failed_everywhere(results):

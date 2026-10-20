@@ -953,6 +953,10 @@ export type ScanErrors = {
      */
     422: ErrorResponse;
     /**
+     * Too many scans; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
      * Internal server error
      */
     500: ErrorResponse;
@@ -996,6 +1000,10 @@ export type AnalyseErrors = {
      */
     422: ErrorResponse;
     /**
+     * Rate limited, or the daily AI budget is used up; see Retry-After
+     */
+    429: ErrorResponse;
+    /**
      * Internal server error
      */
     500: ErrorResponse;
@@ -1004,7 +1012,7 @@ export type AnalyseErrors = {
      */
     502: ErrorResponse;
     /**
-     * Nothing loaded, AI disabled or no database
+     * Nothing loaded, AI disabled, no database or invalid budget settings
      */
     503: ErrorResponse;
 };

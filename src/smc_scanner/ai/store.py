@@ -14,9 +14,11 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, Protocol
+
+from smc_scanner.ai.budget import DayUsage
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +70,10 @@ ON CONFLICT (symbol, tf, zone_kind, zone_low, zone_high, bar_time) DO UPDATE SET
     created_at = excluded.created_at, zone = excluded.zone, context = excluded.context,
     verdict = excluded.verdict, provider = excluded.provider, model = excluded.model,
     prompt_version = excluded.prompt_version, tokens_in = excluded.tokens_in,
-    tokens_out = excluded.tokens_out, cost_estimate = excluded.cost_estimate,
+    tokens_out = excluded.tokens_out,
+    cost_estimate = CASE WHEN analyses.cost_estimate IS NULL AND excluded.cost_estimate IS NULL
+        THEN NULL
+        ELSE COALESCE(analyses.cost_estimate, 0) + COALESCE(excluded.cost_estimate, 0) END,
     error = excluded.error, attempts = analyses.attempts + 1
 WHERE ? OR analyses.error IS NOT NULL
 """
@@ -78,6 +83,11 @@ WHERE symbol = ? AND tf = ? AND zone_kind = ? AND zone_low = ? AND zone_high = ?
 """
 _SELECT_RECENT: Final = f"SELECT {_COLUMNS} FROM analyses ORDER BY created_at DESC, id DESC LIMIT ?"
 _SELECT_BY_ID: Final = f"SELECT {_COLUMNS} FROM analyses WHERE id = ?"
+_SELECT_USAGE: Final = (
+    "SELECT COALESCE(SUM(attempts), 0), COALESCE(SUM(cost_estimate), 0.0) FROM analyses "
+    "WHERE created_at >= ? AND created_at < ?"
+)
+_INDEX_CREATED: Final = "CREATE INDEX IF NOT EXISTS analyses_created_at ON analyses (created_at)"
 # Optional filters are bound as NULL when unused, so the statement text never changes. The
 # verdict JSON is read with json_extract; a failed attempt (verdict NULL) never matches a
 # verdict filter. Keyset paging on the primary key: newest first, ``id < before_id``.
@@ -308,6 +318,7 @@ class SqliteAnalysisStore:
             if "attempts" not in columns:
                 conn.execute("ALTER TABLE analyses ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1")
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.execute(_INDEX_CREATED)  # idempotent, so no schema version bump; speeds the day sum
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -353,6 +364,23 @@ class SqliteAnalysisStore:
         )
         with self._connect() as conn:
             conn.execute(_UPSERT, params)
+
+    def usage_for_day(self, day: date) -> DayUsage:
+        """Attempts saved on one UTC day and their summed cost estimate: one short aggregate query.
+
+        This is the ``BudgetGuard`` usage reader. A retry overwrites its row and bumps
+        ``attempts``, so each row counts all its attempts (a row retried today but first made
+        yesterday counts yesterday's too: fail closed). Failed rows count as calls, including
+        those that failed before reaching the provider (cost 0). A call that failed after
+        reaching the provider is stored at its reserved worst-case cost, and ``save`` adds each
+        overwrite's cost to the row's earlier cost, so retries and forced re-runs all count.
+        ``created_at`` is always written as UTC ISO text, so the day is a string range.
+        """
+        with self._connect() as conn:
+            calls, cost = conn.execute(
+                _SELECT_USAGE, (day.isoformat(), (day + timedelta(days=1)).isoformat())
+            ).fetchone()
+        return DayUsage(calls=calls, cost=float(cost))
 
     def list_recent(self, limit: int) -> list[AnalysisRecord]:
         if limit < 1:
