@@ -2,11 +2,12 @@ import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AutoRefresh } from '@/components/scan/auto-refresh';
+import { ScanAnalysis } from '@/components/scan/scan-analysis';
 import { ScanFailures } from '@/components/scan/scan-failures';
 import { ScanForm } from '@/components/scan/scan-form';
 import { ScanLoadError } from '@/components/scan/scan-load-error';
-import { ScanTable } from '@/components/scan/scan-table';
 import { fetchScan, fetchScanConfig, scanErrorMessage, type ScanResponse } from '@/lib/api/scan';
+import { aiAvailable } from '@/lib/scan/analyse-state';
 import {
   parseScanParams,
   scanHref,
@@ -16,6 +17,9 @@ import {
 
 /** Every scan reads live candles through the API, so the page is never prerendered. */
 export const dynamic = 'force-dynamic';
+
+/** The AI analysis can take a minute; server actions inherit this limit. */
+export const maxDuration = 60;
 
 export const metadata = { title: 'Scan' };
 
@@ -50,7 +54,12 @@ export default async function ScanPage({ searchParams }: { searchParams: SearchP
           {!scanResult.success ? (
             <ScanLoadError message={scanErrorMessage(scanResult)} retryHref={retryHref} />
           ) : (
-            <ScanResults params={params} result={scanResult.data} />
+            <ScanResults
+              scanKey={`${retryHref}@${scannedAt}`}
+              params={params}
+              result={scanResult.data}
+              aiEnabled={aiAvailable(configResult.success ? configResult.data : null)}
+            />
           )}
         </CardContent>
       </Card>
@@ -58,7 +67,17 @@ export default async function ScanPage({ searchParams }: { searchParams: SearchP
   );
 }
 
-function ScanResults({ params, result }: { params: ScanPageParams; result: ScanResponse }) {
+function ScanResults({
+  scanKey,
+  params,
+  result,
+  aiEnabled,
+}: {
+  scanKey: string;
+  params: ScanPageParams;
+  result: ScanResponse;
+  aiEnabled: boolean;
+}) {
   const { query } = params;
   return (
     <div className="space-y-4">
@@ -79,8 +98,17 @@ function ScanResults({ params, result }: { params: ScanPageParams; result: ScanR
           </Button>
         )}
       </div>
-      {result.count > 0 && <ScanTable rows={result.rows} />}
-      <ScanFailures failures={result.failures} />
+      {result.count > 0 ? (
+        <ScanAnalysis
+          key={scanKey}
+          params={params}
+          rows={result.rows}
+          failures={result.failures}
+          aiEnabled={aiEnabled}
+        />
+      ) : (
+        <ScanFailures failures={result.failures} />
+      )}
     </div>
   );
 }

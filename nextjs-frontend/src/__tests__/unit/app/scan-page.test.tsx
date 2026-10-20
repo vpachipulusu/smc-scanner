@@ -57,6 +57,33 @@ describe('ScanPage', () => {
     expect(html).toContain('Last scan at');
   });
 
+  it('offers the AI analysis when there are hits and disables it when /config says no key', async () => {
+    mocks.fetchScan.mockResolvedValue({ success: true, data: makeResponse([makeRow()]) });
+
+    const enabled = await page();
+    expect(enabled).toContain('Analyse with AI');
+    expect(enabled).not.toContain('ai-disabled-hint');
+
+    mocks.fetchScanConfig.mockResolvedValue({
+      success: true,
+      data: { ...CONFIG, ai_enabled: false },
+    });
+    const disabled = await page();
+    expect(disabled).toContain('ai-disabled-hint');
+  });
+
+  it('offers no analysis when nothing is near a zone but still lists skipped symbols', async () => {
+    mocks.fetchScan.mockResolvedValue({
+      success: true,
+      data: makeResponse([], [FAILURE]),
+    });
+
+    const html = await page();
+
+    expect(html).not.toContain('Analyse with AI');
+    expect(html).toContain('1 symbol skipped');
+  });
+
   it('says so when nothing is near a zone and hides the download', async () => {
     mocks.fetchScan.mockResolvedValue({ success: true, data: makeResponse([]) });
 
