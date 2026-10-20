@@ -52,12 +52,88 @@ the MT5 connection is process-wide. `GET /scan` returns `rows` and per-symbol `f
 (503 when nothing could be loaded); `GET /config` returns choices, defaults, limits and the
 watchlist for the scan form. Every error body is `{ "success": false, "error": "..." }`.
 
+Endpoints (all except `/health` need `X-Internal-Key` when `SMC_INTERNAL_KEY` is set; the authoritative
+contract is `nextjs-frontend/openapi.json`):
+
+| Method and path | Purpose |
+|---|---|
+| `GET /health`, `GET /config` | liveness; scan-form choices, defaults, limits, watchlist |
+| `GET /scan` | scan only (rate limited: 20 per 60 s) |
+| `POST /analyse` | scan, then AI verdicts for the best hits (6 per 60 s; spends money) |
+| `GET /analyses`, `GET /analyses/{id}` | stored verdicts, newest first; `limit` (50, max 200) and opaque `cursor` |
+| `GET/POST /schedules`, `GET/PATCH/DELETE /schedules/{id}` | saved schedules (at most 50) |
+| `POST /schedules/{id}/run` | run once now; 409 if running or a scan holds the lock, 429 + `Retry-After` within 10 s of the last run. A failed run still answers 200 with `status: "failed"`; read the job log |
+| `GET /schedules/{id}/logs` | job log, newest first, `limit` (50, max 100) and `cursor` |
+| `POST /telegram/test` | send a fixed test message (503 without `TELEGRAM_BOT_TOKEN`, 422 without a chat id, 429 within 5 s of the last, 502 if Telegram refuses) |
+
+`POST /analyse` also answers 502 when the provider fails for the whole run, and run-now 503 while
+the scheduler shuts down.
+
+#### Environment variables
+
+Copy `.env.example` to `.env` (loaded at startup by the API and CLI); it lists names only.
+
+| Variable | Meaning |
+|---|---|
+| `MT5_PATH`, `MT5_LOGIN`, `MT5_PASSWORD`, `MT5_SERVER` | optional terminal start and login (investor password) |
+| `SMC_WATCHLIST` | watchlist file, default `watchlist.yaml` |
+| `SMC_API_ALLOWED_HOSTS` | accepted `Host` headers, default `127.0.0.1,localhost` |
+| `SMC_API_HOST` / `UVICORN_HOST` | tell the startup check which address you bind to (the server cannot see it) |
+| `SMC_INTERNAL_KEY` | shared secret for `X-Internal-Key`; must equal `BACKEND_INTERNAL_KEY` in the frontend |
+| `ANTHROPIC_API_KEY` | required for `--ai` and `POST /analyse` |
+| `AI_PROVIDER` (only `claude`), `AI_MODEL` (default `claude-sonnet-5-5`), `AI_TIMEOUT_SECONDS` (60), `AI_MAX_RETRIES` (2, max 5), `AI_TEMPERATURE`, `AI_BASE_URL` | provider tuning |
+| `AI_MAX_CALLS_PER_DAY`, `AI_MAX_COST_PER_DAY` | daily AI caps in calls and estimated USD, per UTC day; blank is unlimited |
+| `SMC_DB_PATH` | SQLite file for analyses, schedules, alerts and the job log, default `./smc.db` |
+| `SMC_SCHEDULER` | `1`/`true`/`yes`/`on` enables the scheduler; anything else (an unknown value logs a warning) leaves it off |
+| `SMC_SERVER_TZ` | IANA zone of the broker clock for 4h/1d schedules, default UTC |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Telegram alerts; the chat id is the default for schedules without their own |
+
+Frontend (`nextjs-frontend/.env.local`, server-only): `BACKEND_API_URL` (required, no default;
+`.env.example` sets `http://127.0.0.1:8000`) and `BACKEND_INTERNAL_KEY`. `AI_BASE_URL` must be
+https. The scheduler also reads `WEB_CONCURRENCY` (set by some launchers) to warn about several workers.
+
+#### Daily AI budget and rate limits
+
+`POST /analyse` checks `AI_MAX_CALLS_PER_DAY` / `AI_MAX_COST_PER_DAY` against the day's stored
+usage before each provider call. Cost is an estimate from a built-in price table (an unknown
+model is charged the dearest known rate); treat it as a guard, not as billing.
+
+- Cap reached: **429** with `Retry-After` (seconds to UTC midnight). Hits already analysed are
+  served from the database without a call, so they work even then.
+- Invalid cap (for example `AI_MAX_CALLS_PER_DAY=abc`): **503**, never silently unlimited. The API
+  reads caps per `/analyse` request; the scheduler reads them once at startup, so restart after a
+  change (an invalid value stops startup when the scheduler is on).
+- Endpoint rate limits (`/scan`, `/analyse`): **429** with `Retry-After`. The window is in
+  process memory and global to the endpoint, not per client.
+- Startup logs a warning when neither cap is set, or when the API looks reachable beyond
+  loopback without `SMC_INTERNAL_KEY`.
+
 #### Scheduler (opt-in)
 
 Set `SMC_SCHEDULER=1` to run saved schedules inside the API process (off by default, so
-tests and local runs start no threads). Scheduled scans share the `/scan` lock. It uses
-`SMC_DB_PATH`, `SMC_SERVER_TZ`, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from the
-environment. Run a single uvicorn worker (no `--workers N`), or every worker would scan and alert.
+tests and local runs start no threads). A schedule has a frequency of `15m`, `1h`, `4h` or `1d`
+and runs just after each candle **closes** (5 s grace): 15m and 1h on the UTC grid, 4h and 1d on
+the broker's wall clock, so set `SMC_SERVER_TZ` for those. A scheduled run scans closed bars,
+analyses hits (same caps and cache as `/analyse`), applies the delivery rules and sends to
+Telegram. After downtime it runs once and rejoins the grid; missed slots are not replayed.
+Scheduled scans share the `/scan` lock. Run a single uvicorn worker (no `--workers N`), or
+every worker would scan and alert.
+
+Delivery rules, in order: HOLD is not sent unless `send_hold`; verdicts below `min_confidence`
+are skipped; with `only_on_change` a verdict equal to the previous action for that symbol and
+timeframe is skipped. A schedule's `min_score` picks which hits go to the AI.
+
+#### Telegram alerts
+
+Create a bot with @BotFather, put its token in `TELEGRAM_BOT_TOKEN`, message the bot (or add it
+to a group) and put the chat id (a number, or `@channelname`) in `TELEGRAM_CHAT_ID` or on each
+schedule. Check it with `POST /telegram/test`. Every message ends with "Advisory only - no
+orders are placed."
+
+Alerts are **at-most-once** per schedule, symbol, timeframe, zone and bar: a claim is written
+before the send. A send that fails releases its claim and is retried by a later run; if the
+process dies between claim and send, that alert is lost and not retried. The token never appears
+in responses or logs.
 
 ## Web page (`nextjs-frontend/`)
 
@@ -67,7 +143,7 @@ and a CSV download (`/scan/export`, same columns as the CLI). The form is a GET 
 scan has a shareable URL and the page works without JavaScript.
 
 ```bash
-cd nextjs-frontend && npm install && copy .env.example .env.local
+cd nextjs-frontend && npm install && cp .env.example .env.local
 uv run uvicorn smc_scanner.api:app --host 127.0.0.1 --port 8000   # from the repo root
 npm run dev                                                         # http://localhost:3000/scan
 ```
@@ -128,6 +204,85 @@ the symbol's last tick (closed market or dead feed).
 ### CSV
 
 Header `time,open,high,low,close[,volume]`, ISO-8601 times, any order (sorted on load).
+
+## Quick start (no terminal, no key)
+
+```bash
+uv sync
+uv run smc-scan --demo --ai --ai-provider fake --ai-min-score 0      # CLI: scan + canned verdicts
+uv run uvicorn smc_scanner.api:app --host 127.0.0.1 --port 8000      # terminal 1
+cd nextjs-frontend && npm install && cp .env.example .env.local     # once
+npm run dev                                                           # terminal 2
+```
+
+Open http://localhost:3000/scan and pick the `demo` source. The `fake` provider is CLI/demo-only;
+the API, scheduler and web app use only `claude`, so AI verdicts there need `ANTHROPIC_API_KEY`.
+Scheduled runs analyse hits and fail without it. To try a schedule, add `SMC_SCHEDULER=1` and the
+key to `.env`, then create a schedule with `"source": "demo"` (source has no default).
+
+## How verdicts are produced, and their limits
+
+Each hit at or above the minimum score is turned into a JSON context of already-computed scanner
+numbers (never a chart image) and sent to Claude with a fixed prompt (`smc-verdict-1`). The reply
+must be one JSON object: `BUY`, `SELL` or `HOLD`, a confidence, entry, stop, up to three targets,
+a quality grade and short reasons. Replies are untrusted: anything malformed or implausible
+(stop outside 0.1-5 ATR of entry, targets beyond 15 ATR, reward/risk outside 1-20) becomes a
+**HOLD flagged as downgraded** with the reason, and risk/reward is always recomputed locally.
+An entry more than 1.5 ATR from the zone is downgraded too. One verdict is stored per symbol,
+timeframe, zone and bar, so a successfully analysed bar is not paid for twice (a new prompt or
+model does not re-analyse old bars). A failed call is counted at worst-case cost and retried
+after a cooldown, up to 3 attempts per bar.
+
+The verdict is **advisory only**. The model sees the scanner's numbers and nothing else (no news,
+spreads, sessions or account state), can be wrong, and nothing in this repository places or
+manages an order. Verdict text is model-controlled: it is cleaned of control characters but must
+be escaped by whatever renders it.
+
+## Known limits
+
+- The CLI `--ai` path is **not wired to the daily caps**: `AI_MAX_CALLS_PER_DAY` and
+  `AI_MAX_COST_PER_DAY` apply to `POST /analyse` and the scheduler only. Use `--ai-max` there.
+- If the cap is reached **part-way through** an `/analyse` run, the response is a 429 and the rows
+  already analysed are not in it; they are stored, so read them from `GET /analyses`.
+- The rate limiters, the scan lock and the scheduler guard live in one process. Run a single
+  uvicorn worker. The limit is global per endpoint, not per client.
+- **Auth fails open**: with `SMC_INTERNAL_KEY` unset the API accepts any caller that passes the
+  `Host` check. Set it before binding beyond loopback (startup warns when it can tell).
+- Scans use closed bars only; after a market close the newest closed bar may be skipped until the
+  next tick (see MetaTrader 5 above). Telegram alerts are at-most-once (see above).
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| Web page says the scanner is unreachable | API not running or `BACKEND_API_URL` wrong; start uvicorn on `127.0.0.1:8000` |
+| 400 "Invalid host header" (plain text) | `Host` header not in `SMC_API_ALLOWED_HOSTS` |
+| 401 from the API | `BACKEND_INTERNAL_KEY` differs from `SMC_INTERNAL_KEY` |
+| Web page says "The scanner API could not be reached" | API not running, or no `nextjs-frontend/.env.local` (`BACKEND_API_URL` unset); copy `.env.example` and restart `npm run dev` |
+| 503 "No symbol could be loaded" / CLI exit code 1 | MT5 terminal closed or not logged in; log in, or set `MT5_*` |
+| Symbols skipped as unknown | broker suffixes (`.p`, `.r`, `m`); write them as Market Watch shows them in `watchlist.yaml` |
+| 503 "AI analysis is disabled" | `ANTHROPIC_API_KEY` not set (an invalid `AI_MODEL`, `AI_BASE_URL` or timeout says "unavailable"; provider call failures are 502 "AI provider failed"; scheduled failures show only in the job log) |
+| 503 "AI budget settings are invalid" | `AI_MAX_CALLS_PER_DAY` / `AI_MAX_COST_PER_DAY` not valid (calls: whole number, cost: decimal, both 0 or more) |
+| 429 on `/analyse` | rate limit or daily cap; wait for `Retry-After` |
+| Schedules never run | `SMC_SCHEDULER` not set. 4h/1d runs hours off: set `SMC_SERVER_TZ`. Duplicate scans or alerts: several workers |
+| 503 on `/telegram/test` | `TELEGRAM_BOT_TOKEN` not set |
+
+## Module map (for contributors)
+
+| Area | Modules |
+|---|---|
+| Scan engine | `scanner.py`, `structure.py`, `zones.py`, `scoring.py`, `smc_lib.py`, `models.py`, `report.py` |
+| Data sources | `loaders/` (`mt5.py`, `csv_loader.py`, `demo.py`), `watchlist.py` |
+| CLI | `cli.py`, `ai_cli.py` |
+| AI verdicts | `ai/` (`prompt.py`, `context.py`, `providers.py`, `verdict.py`, `analyst.py`, `store.py`, `budget.py`) |
+| Shared | `config.py`, `ratelimit.py` (API rate limiter) |
+| Scheduler | `schedule/` (`timing.py`, `rules.py`, `store.py`, `joblog.py`, `runner.py`) |
+| Telegram | `notify/telegram.py` |
+| HTTP API | `api.py`, `openapi_export.py` |
+| Web | `nextjs-frontend/src/app` (`/scan`, `/analyses/[id]`, dashboard at the root page), `src/lib/api` |
+
+Story history lives in Jira (project TRAD): e.g. TRAD-13 job log, TRAD-14 schedule API,
+TRAD-17 analysis detail page, TRAD-19 scan-page verdicts, TRAD-22 budget guard and wiring.
 
 ## Logic (per instrument, on the latest candle)
 
