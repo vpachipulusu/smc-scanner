@@ -93,6 +93,13 @@ def canonical_bar_time(text: str) -> str:
     return parsed.isoformat()
 
 
+def _normalise_bound(name: str, value: float) -> float:
+    """Round a zone bound to the key precision; reject non-finite values."""
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite")
+    return float(f"{value:.{KEY_SIGNIFICANT_DIGITS}g}")
+
+
 @dataclass(frozen=True)
 class AnalysisKey:
     """One analysis per zone per bar: the dedupe key.
@@ -110,11 +117,10 @@ class AnalysisKey:
     bar_time: str
 
     def __post_init__(self) -> None:
-        for name in ("zone_low", "zone_high"):
-            value = getattr(self, name)
-            if not math.isfinite(value):
-                raise ValueError(f"{name} must be finite")
-            object.__setattr__(self, name, float(f"{value:.{KEY_SIGNIFICANT_DIGITS}g}"))
+        low = _normalise_bound("zone_low", self.zone_low)
+        high = _normalise_bound("zone_high", self.zone_high)
+        object.__setattr__(self, "zone_low", low)
+        object.__setattr__(self, "zone_high", high)
         object.__setattr__(self, "bar_time", canonical_bar_time(self.bar_time))
 
 
