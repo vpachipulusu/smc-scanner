@@ -1,16 +1,19 @@
-import { TriangleAlert } from 'lucide-react';
-
-import { DashboardCard } from '@/components/dashboard/dashboard-card';
+import { ErrorBanner } from '@/components/dashboard/error-banner';
+import {
+  LATEST_VERDICTS_LIMIT,
+  LatestVerdictsCard,
+} from '@/components/dashboard/latest-verdicts-card';
 import { PlaceholderCard } from '@/components/dashboard/placeholder-card';
-import { ScanFailures } from '@/components/scan/scan-failures';
-import { StatusPill } from '@/components/ui/status-pill';
-import type { ApiResult } from '@/lib/api/server';
+import { SummaryCard, TouchingCard } from '@/components/dashboard/scan-cards';
+import { fetchAnalyses, type AnalysisPage } from '@/lib/api/analyses';
+import { analysesUnavailableMessage } from '@/lib/api/analyses-messages';
 import {
   fetchScan,
   SCAN_UNAVAILABLE_MESSAGE,
   scanErrorMessage,
   type ScanResponse,
 } from '@/lib/api/scan';
+import type { ApiResult } from '@/lib/api/server';
 import { DEFAULTS } from '@/lib/scan/params';
 
 /** The scan reads live candles through the API, so the page is never prerendered. */
@@ -24,8 +27,16 @@ async function loadScan(): Promise<ApiResult<ScanResponse>> {
   }
 }
 
+async function loadAnalyses(): Promise<ApiResult<AnalysisPage>> {
+  try {
+    return await fetchAnalyses({ limit: LATEST_VERDICTS_LIMIT });
+  } catch {
+    return { success: false, error: analysesUnavailableMessage() };
+  }
+}
+
 export default async function DashboardPage() {
-  const result = await loadScan();
+  const [scanResult, analysesResult] = await Promise.all([loadScan(), loadAnalyses()]);
 
   return (
     <div className="space-y-6">
@@ -35,73 +46,18 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {result.success ? (
+        {scanResult.success ? (
           <>
-            <TouchingCard rows={result.data.rows} />
-            <SummaryCard response={result.data} />
+            <TouchingCard rows={scanResult.data.rows} />
+            <SummaryCard response={scanResult.data} />
           </>
         ) : (
-          <ErrorBanner message={scanErrorMessage(result)} />
+          <ErrorBanner message={scanErrorMessage(scanResult)} className="md:col-span-2" />
         )}
-        <PlaceholderCard title="Latest verdicts" />
+        <LatestVerdictsCard result={analysesResult} />
         <PlaceholderCard title="Next scheduled run" />
         <PlaceholderCard title="Last run status" />
       </div>
-    </div>
-  );
-}
-
-function TouchingCard({ rows }: { rows: ScanResponse['rows'] }) {
-  const touching = rows.filter((row) => row.status === 'TOUCHING');
-  return (
-    <DashboardCard title="TOUCHING now">
-      {touching.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No instrument is touching a fresh zone right now.
-        </p>
-      ) : (
-        <ul className="divide-y">
-          {touching.map((row) => (
-            <li
-              key={`${row.instrument}-${row.zone}-${row.bar_time}`}
-              className="flex flex-wrap items-center gap-3 py-2"
-            >
-              <span className="min-w-20 font-medium">{row.instrument}</span>
-              <StatusPill variant="good">TOUCHING</StatusPill>
-              <span className="text-sm text-muted-foreground">{row.zone}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </DashboardCard>
-  );
-}
-
-function SummaryCard({ response }: { response: ScanResponse }) {
-  const total = response.rows.length;
-  const near = response.rows.filter((row) => row.status === 'NEAR').length;
-  const touching = response.rows.filter((row) => row.status === 'TOUCHING').length;
-  return (
-    <DashboardCard title="Latest scan summary">
-      <div className="space-y-3">
-        <p className="text-sm">
-          {total} {total === 1 ? 'row' : 'rows'} on {response.tf} ({response.source}): {touching}{' '}
-          touching, {near} near.
-        </p>
-        <ScanFailures failures={response.failures} />
-      </div>
-    </DashboardCard>
-  );
-}
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      className="flex items-center gap-2 rounded-lg border border-destructive/50 p-4 text-sm text-crit-foreground md:col-span-2"
-    >
-      <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
-      {message}
     </div>
   );
 }
