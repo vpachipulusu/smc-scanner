@@ -13,8 +13,9 @@ this with an AST check.
 The MT5 Python API is one process-wide connection and is not thread-safe, so symbols are
 scanned one at a time and the API serialises scans with a lock.
 
-Position 0 of ``copy_rates_from_pos`` is the still-forming candle, so the scan's "latest
-candle" is live and its status can change until the bar closes.
+Position 0 of ``copy_rates_from_pos`` is the still-forming candle. By default it is dropped
+(``closed_only=True``), so the scan's "latest candle" is the last closed bar and its status
+does not change between scans; ``closed_only=False`` keeps the live bar.
 """
 
 import importlib
@@ -67,7 +68,8 @@ class Mt5Loader:
     the login fifty times (brokers lock accounts for that).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, closed_only: bool = True) -> None:
+        self.closed_only = closed_only
         self._mt5: ModuleType | None = None
         self._connect_error: LoaderError | None = None
 
@@ -103,11 +105,36 @@ class Mt5Loader:
         if not mt5.symbol_select(symbol, True):
             raise LoaderError(f"unknown symbol {symbol!r}: {mt5.last_error()}")
         tf_value = getattr(mt5, MT5_TIMEFRAME_ATTR[timeframe])
-        rates = mt5.copy_rates_from_pos(symbol, tf_value, 0, bars)
+        count = bars + 1 if self.closed_only else bars
+        rates = mt5.copy_rates_from_pos(symbol, tf_value, 0, count)
         if rates is None or len(rates) == 0:
             raise LoaderError(f"no candles for {symbol!r}: {mt5.last_error()}")
-        _warn_if_stale(mt5, symbol, timeframe, int(rates["time"][-1]))
+        last_open = int(rates["time"][-1])
+        tick_epoch = _warn_if_stale(mt5, symbol, timeframe, last_open)
+        if self.closed_only:
+            rates = _closed_bars(rates, bars, _bar_seconds(timeframe), tick_epoch)
+            if len(rates) == 0:
+                raise LoaderError(f"no closed candles for {symbol!r}")
         return rates_to_frame(rates)
+
+
+def _bar_seconds(timeframe: str) -> int:
+    return TIMEFRAME_MINUTES[timeframe] * SECONDS_PER_MINUTE
+
+
+def _closed_bars(
+    rates: npt.NDArray[np.void], bars: int, bar_seconds: int, tick_epoch: int
+) -> npt.NDArray[np.void]:
+    """Drop the last bar unless the last tick is at or past its end, then keep ``bars`` rows.
+
+    Closure is judged from the last tick time, so after a market close or on an illiquid
+    symbol with no tick since the bar ended, a closed bar is still treated as forming. An
+    unknown tick time (0) also counts as forming.
+    """
+    last_open = int(rates["time"][-1])
+    if tick_epoch <= 0 or last_open + bar_seconds > tick_epoch:
+        rates = rates[:-1]
+    return rates[-bars:]
 
 
 def rates_to_frame(rates: npt.NDArray[np.void]) -> pd.DataFrame:
@@ -123,14 +150,14 @@ def rates_to_frame(rates: npt.NDArray[np.void]) -> pd.DataFrame:
     return normalise(raw[["time", "open", "high", "low", "close", "volume"]])
 
 
-def _warn_if_stale(mt5: ModuleType, symbol: str, timeframe: str, last_bar_epoch: int) -> None:
-    """Compare the last bar with the symbol's last tick (both broker time); warn when the
-    bar is older than a couple of timeframes, which means a closed market or a dead feed."""
+def _warn_if_stale(mt5: ModuleType, symbol: str, timeframe: str, last_bar_epoch: int) -> int:
+    """Return the last tick time (0 if unknown) and warn when the last bar is older than a
+    couple of timeframes (both broker time), which means a closed market or a dead feed."""
     tick = mt5.symbol_info_tick(symbol)
     tick_epoch = int(getattr(tick, "time", 0) or 0)
     if tick_epoch <= 0:
-        return
-    bar_seconds = TIMEFRAME_MINUTES[timeframe] * SECONDS_PER_MINUTE
+        return 0
+    bar_seconds = _bar_seconds(timeframe)
     age = tick_epoch - (last_bar_epoch + bar_seconds)
     if age > STALE_BAR_MULTIPLIER * bar_seconds:
         log.warning(
@@ -138,3 +165,4 @@ def _warn_if_stale(mt5: ModuleType, symbol: str, timeframe: str, last_bar_epoch:
             symbol,
             age // SECONDS_PER_MINUTE,
         )
+    return tick_epoch

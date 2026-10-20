@@ -92,8 +92,11 @@ Symbol names are broker-specific (`EURUSD`, `XAUUSD`, `USTEC`/`NAS100`/`US100`, 
 as Market Watch shows them; unknown symbols are logged and skipped. `symbol_select` adds a
 scanned symbol to Market Watch. Candle times are broker server time.
 
-The latest candle is the **still-forming bar**, so TOUCHING/NEAR and the price can change
-until it closes. A warning is logged when the last bar is more than two timeframes behind
+The scan uses **closed bars only**: the still-forming candle is dropped, so TOUCHING/NEAR and
+the price do not change between scans of the same bar. Pass `--include-forming` to the CLI to
+scan the live candle instead (the API is always closed-only). A bar counts as closed once the
+symbol's last tick time is past its end, so after a market close or on a quiet symbol the
+newest closed bar can be skipped until the next tick. A warning is logged when the last bar is more than two timeframes behind
 the symbol's last tick (closed market or dead feed).
 
 ### CSV

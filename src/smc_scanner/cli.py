@@ -55,6 +55,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--all-touches", action="store_true", help="include zones touched before")
     parser.add_argument("--every", type=int, metavar="N", help="rescan every N minutes")
     parser.add_argument("--out", type=Path, default=Path(DEFAULT_OUTPUT_CSV), help="CSV path")
+    parser.add_argument(
+        "--include-forming", action="store_true", help="MT5: also scan the still-forming candle"
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
 
@@ -98,7 +101,13 @@ def _report(result: ScanResult, args: argparse.Namespace, source: str, console: 
 
 def run_once(args: argparse.Namespace, source: str, symbols: list[str], console: Console) -> int:
     options = ScanOptions(swing_length=args.swing, near_atr=args.near, all_touches=args.all_touches)
-    result = run_scan(make_loader(source), symbols, args.tf, args.bars, options)
+    result = run_scan(
+        make_loader(source, closed_only=not args.include_forming),
+        symbols,
+        args.tf,
+        args.bars,
+        options,
+    )
     return _report(result, args, source, console)
 
 

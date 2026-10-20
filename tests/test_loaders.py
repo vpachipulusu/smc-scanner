@@ -162,14 +162,24 @@ class _FakeMt5:
         self, symbol: str, tf: int, start: int, count: int
     ) -> np.ndarray | None:
         self.calls.append(("copy_rates_from_pos", (symbol, tf, start, count)))
-        return self.rates
+        return None if self.rates is None else self.rates[-count:]
+
+
+HOUR = 3600
 
 
 @pytest.fixture
 def fake_mt5(monkeypatch: pytest.MonkeyPatch) -> _FakeMt5:
-    fake = _FakeMt5(simulate_rates("EURUSD", "1h", 30, seed=3))
+    fake = _FakeMt5(simulate_rates("EURUSD", "1h", 40, seed=3))
+    # Broker "now" is a minute after the latest bar opened, so that bar is still forming.
+    fake.tick_time = _last_open(fake) + 60
     monkeypatch.setitem(sys.modules, MT5_MODULE_NAME, fake)
     return fake
+
+
+def _last_open(fake: _FakeMt5) -> int:
+    assert fake.rates is not None
+    return int(fake.rates["time"][-1])
 
 
 def test_mt5_loader_loads_and_shuts_down(fake_mt5: _FakeMt5) -> None:
@@ -177,8 +187,69 @@ def test_mt5_loader_loads_and_shuts_down(fake_mt5: _FakeMt5) -> None:
         out = loader.load("EURUSD", "1h", 30)
 
     assert len(out) == 30
-    assert ("copy_rates_from_pos", ("EURUSD", 16385, 0, 30)) in fake_mt5.calls
+    # One extra bar is requested so dropping the forming bar still leaves 30.
+    assert ("copy_rates_from_pos", ("EURUSD", 16385, 0, 31)) in fake_mt5.calls
     assert ("shutdown", ()) in fake_mt5.calls
+
+
+def test_mt5_loader_drops_the_forming_bar_by_default(fake_mt5: _FakeMt5) -> None:
+    forming_open = pd.Timestamp(_last_open(fake_mt5), unit="s")
+
+    out = Mt5Loader().load("EURUSD", "1h", 30)
+
+    assert len(out) == 30
+    assert out["time"].iloc[-1] == forming_open - pd.Timedelta(hours=1)
+
+
+def test_mt5_loader_keeps_the_last_bar_once_it_has_closed(fake_mt5: _FakeMt5) -> None:
+    fake_mt5.tick_time = _last_open(fake_mt5) + HOUR  # the next period has begun
+
+    out = Mt5Loader().load("EURUSD", "1h", 30)
+
+    assert len(out) == 30
+    assert out["time"].iloc[-1] == pd.Timestamp(_last_open(fake_mt5), unit="s")
+
+
+def test_mt5_loader_treats_the_last_bar_as_forming_when_tick_time_is_unknown(
+    fake_mt5: _FakeMt5,
+) -> None:
+    fake_mt5.tick_time = 0
+    forming_open = pd.Timestamp(_last_open(fake_mt5), unit="s")
+
+    out = Mt5Loader().load("EURUSD", "1h", 30)
+
+    assert out["time"].iloc[-1] == forming_open - pd.Timedelta(hours=1)
+
+
+def test_mt5_loader_bars_1_returns_the_last_closed_bar(fake_mt5: _FakeMt5) -> None:
+    out = Mt5Loader().load("EURUSD", "1h", 1)
+
+    assert len(out) == 1
+    assert out["time"].iloc[-1] == pd.Timestamp(_last_open(fake_mt5) - HOUR, unit="s")
+
+
+def test_mt5_loader_errors_when_only_a_forming_bar_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeMt5(simulate_rates("EURUSD", "1h", 1, seed=3))
+    fake.tick_time = _last_open(fake) + 60
+    monkeypatch.setitem(sys.modules, MT5_MODULE_NAME, fake)
+
+    with pytest.raises(LoaderError, match="no closed candles"):
+        Mt5Loader().load("EURUSD", "1h", 5)
+
+
+def test_mt5_loader_can_include_the_forming_bar(fake_mt5: _FakeMt5) -> None:
+    out = Mt5Loader(closed_only=False).load("EURUSD", "1h", 30)
+
+    assert len(out) == 30
+    assert out["time"].iloc[-1] == pd.Timestamp(_last_open(fake_mt5), unit="s")
+    assert ("copy_rates_from_pos", ("EURUSD", 16385, 0, 30)) in fake_mt5.calls
+
+
+def test_make_loader_passes_closed_only_to_mt5() -> None:
+    loader = make_loader("mt5", closed_only=False)
+
+    assert isinstance(loader, Mt5Loader)
+    assert loader.closed_only is False
 
 
 def test_mt5_loader_reads_login_from_environment(
