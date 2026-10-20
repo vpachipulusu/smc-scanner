@@ -1,0 +1,5 @@
+node_modules/
+.next/
+coverage/
+src/lib/api/generated/
+openapi.json

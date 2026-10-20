@@ -1,0 +1,666 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SMC scanner",
+    "description": "Screens a watchlist for price touching or near fresh order blocks and fair value gaps. Read-only; it never places trades.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "scanner"
+        ],
+        "summary": "Health",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No symbol could be loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config": {
+      "get": {
+        "tags": [
+          "scanner"
+        ],
+        "summary": "Config",
+        "description": "Choices, defaults and limits for the scan form, plus the watchlist per source.",
+        "operationId": "config",
+        "parameters": [
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No symbol could be loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scan": {
+      "get": {
+        "tags": [
+          "scanner"
+        ],
+        "summary": "Scan",
+        "description": "Scan the given symbols (or the watchlist) on one timeframe.\n\n503 when no symbol could be loaded at all (terminal down, bad login); otherwise the\nper-symbol failures are listed next to the rows.",
+        "operationId": "scan",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "mt5",
+                "demo"
+              ],
+              "type": "string",
+              "default": "mt5",
+              "title": "Source"
+            }
+          },
+          {
+            "name": "tf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "4h",
+                "1d"
+              ],
+              "type": "string",
+              "default": "1h",
+              "title": "Tf"
+            }
+          },
+          {
+            "name": "symbols",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "comma-separated; default watchlist",
+              "title": "Symbols"
+            },
+            "description": "comma-separated; default watchlist"
+          },
+          {
+            "name": "bars",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 15,
+              "default": 500,
+              "title": "Bars"
+            }
+          },
+          {
+            "name": "swing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 10,
+              "title": "Swing"
+            }
+          },
+          {
+            "name": "near",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 5.0,
+              "minimum": 0,
+              "default": 0.5,
+              "title": "Near"
+            }
+          },
+          {
+            "name": "all_touches",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "All Touches"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No symbol could be loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ConfigResponse": {
+        "properties": {
+          "sources": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "mt5",
+                "demo"
+              ]
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "timeframes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "4h",
+                "1d"
+              ]
+            },
+            "type": "array",
+            "title": "Timeframes"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/ScanDefaults"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ScanLimits"
+          },
+          "watchlist": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Watchlist"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sources",
+          "timeframes",
+          "defaults",
+          "limits",
+          "watchlist"
+        ],
+        "title": "ConfigResponse",
+        "description": "What the scan form needs: choices, defaults, limits and the watchlist per source."
+      },
+      "ErrorResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": false,
+            "title": "Success",
+            "default": false
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "description": "Body of every error response."
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "HealthResponse"
+      },
+      "ScanDefaults": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "mt5",
+              "demo"
+            ],
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Tf"
+          },
+          "bars": {
+            "type": "integer",
+            "title": "Bars"
+          },
+          "swing": {
+            "type": "integer",
+            "title": "Swing"
+          },
+          "near": {
+            "type": "number",
+            "title": "Near"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "tf",
+          "bars",
+          "swing",
+          "near"
+        ],
+        "title": "ScanDefaults"
+      },
+      "ScanFailureOut": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "error"
+        ],
+        "title": "ScanFailureOut"
+      },
+      "ScanLimits": {
+        "properties": {
+          "min_bars": {
+            "type": "integer",
+            "title": "Min Bars"
+          },
+          "max_bars": {
+            "type": "integer",
+            "title": "Max Bars"
+          },
+          "max_swing": {
+            "type": "integer",
+            "title": "Max Swing"
+          },
+          "max_near": {
+            "type": "number",
+            "title": "Max Near"
+          },
+          "max_symbols": {
+            "type": "integer",
+            "title": "Max Symbols"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min_bars",
+          "max_bars",
+          "max_swing",
+          "max_near",
+          "max_symbols"
+        ],
+        "title": "ScanLimits"
+      },
+      "ScanResponse": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "mt5",
+              "demo"
+            ],
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Tf"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ScanRowOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/ScanFailureOut"
+            },
+            "type": "array",
+            "title": "Failures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "tf",
+          "count",
+          "rows",
+          "failures"
+        ],
+        "title": "ScanResponse"
+      },
+      "ScanRowOut": {
+        "properties": {
+          "instrument": {
+            "type": "string",
+            "title": "Instrument"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "TOUCHING",
+              "NEAR"
+            ],
+            "title": "Status"
+          },
+          "zone": {
+            "type": "string",
+            "title": "Zone"
+          },
+          "zone_low": {
+            "type": "number",
+            "title": "Zone Low"
+          },
+          "zone_high": {
+            "type": "number",
+            "title": "Zone High"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "dist_atr": {
+            "type": "number",
+            "title": "Dist Atr"
+          },
+          "bias": {
+            "type": "string",
+            "enum": [
+              "bullish",
+              "bearish",
+              "range"
+            ],
+            "title": "Bias"
+          },
+          "in_ote": {
+            "type": "boolean",
+            "title": "In Ote"
+          },
+          "trendline_ok": {
+            "type": "boolean",
+            "title": "Trendline Ok"
+          },
+          "ob_fvg": {
+            "type": "boolean",
+            "title": "Ob Fvg"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "zone_age": {
+            "type": "integer",
+            "title": "Zone Age"
+          },
+          "prior_touches": {
+            "type": "integer",
+            "title": "Prior Touches"
+          },
+          "bar_time": {
+            "type": "string",
+            "title": "Bar Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "instrument",
+          "status",
+          "zone",
+          "zone_low",
+          "zone_high",
+          "price",
+          "dist_atr",
+          "bias",
+          "in_ote",
+          "trendline_ok",
+          "ob_fvg",
+          "score",
+          "zone_age",
+          "prior_touches",
+          "bar_time"
+        ],
+        "title": "ScanRowOut"
+      }
+    }
+  }
+}

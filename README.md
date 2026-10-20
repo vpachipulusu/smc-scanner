@@ -42,12 +42,42 @@ uv run uvicorn smc_scanner.api:app --host 127.0.0.1 --port 8000
 # GET /scan?source=mt5&tf=1h&symbols=EURUSD,XAUUSD&bars=500&swing=10&near=0.5&all_touches=false
 ```
 
-Bind to loopback only: there is no authentication. Requests whose `Host` is not in
-`SMC_API_ALLOWED_HOSTS` (default `127.0.0.1,localhost`) get a 400. Sources are `mt5` and
-`demo` (the csv source takes file paths, so it is CLI-only). Symbols are validated against
+Only the Next.js server calls this API (see below); the browser never does, so there is no
+CORS. Bind to loopback: requests whose `Host` is not in `SMC_API_ALLOWED_HOSTS` (default
+`127.0.0.1,localhost`) get a 400, and when `SMC_INTERNAL_KEY` is set every request must carry
+it in `X-Internal-Key` (unset means open on loopback). Sources are `mt5` and `demo` (the csv
+source takes file paths, so it is CLI-only). Symbols are validated against
 `[A-Za-z0-9._#@-]{1,32}`, at most 50 per request. Scans are serialised with a lock because
-the MT5 connection is process-wide. The response lists `rows` and per-symbol `failures`;
-it is a 503 when nothing could be loaded.
+the MT5 connection is process-wide. `GET /scan` returns `rows` and per-symbol `failures`
+(503 when nothing could be loaded); `GET /config` returns choices, defaults, limits and the
+watchlist for the scan form. Every error body is `{ "success": false, "error": "..." }`.
+
+## Web page (`nextjs-frontend/`)
+
+A Next.js 16 page at `/scan` that runs the same scan through the API and shows the rows with
+status and bias pills, score pips, the skipped symbols, an auto-rescan (`?every=N` minutes)
+and a CSV download (`/scan/export`, same columns as the CLI). The form is a GET form, so every
+scan has a shareable URL and the page works without JavaScript.
+
+```bash
+cd nextjs-frontend && npm install && copy .env.example .env.local
+uv run uvicorn smc_scanner.api:app --host 127.0.0.1 --port 8000   # from the repo root
+npm run dev                                                         # http://localhost:3000/scan
+```
+
+It follows StoreCart's conventions: the browser never calls FastAPI; server-only wrappers in
+`src/lib/api/` (`scan.ts` over `server.ts`'s `callBackend`) call the client generated from
+`openapi.json` into `src/lib/api/generated/` (never edited; ESLint blocks imports of it outside
+`src/lib/api` and tests). After an API change:
+
+```bash
+uv run python -m smc_scanner.openapi_export      # writes nextjs-frontend/openapi.json
+cd nextjs-frontend && npm run generate:client    # regenerates src/lib/api/generated
+```
+
+`pytest tests/test_openapi.py` and `npm run check:client` fail while either is stale.
+Checks: `npm run lint && npm run typecheck && npm run test:coverage` (Vitest, 80% thresholds).
+There is no Playwright suite yet.
 
 ### MetaTrader 5
 

@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens trimmed from StoreCart's globals.css: the shadcn set plus the four status pairs
+   (text on its own tint) that StatusPill uses. */
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 222 47% 11%;
+    --card: 40 33% 99%;
+    --card-foreground: 222 47% 11%;
+    --popover: 40 33% 99%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 40 33% 98%;
+    --secondary: 35 25% 93%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 35 20% 94%;
+    --muted-foreground: 220 12% 38%;
+    --accent: 38 65% 60%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 35 20% 89%;
+    --input: 35 12% 54%;
+    --ring: 222 47% 11%;
+    --good-fg: 152 60% 22%;
+    --good-bg: 152 40% 91%;
+    --warn-fg: 30 90% 24%;
+    --warn-bg: 42 90% 89%;
+    --crit-fg: 0 70% 36%;
+    --crit-bg: 0 80% 96%;
+    --info-fg: 217 70% 34%;
+    --info-bg: 217 80% 95%;
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 224 50% 6%;
+    --foreground: 38 25% 90%;
+    --card: 224 45% 9%;
+    --card-foreground: 38 25% 90%;
+    --popover: 224 45% 9%;
+    --popover-foreground: 38 25% 90%;
+    --primary: 38 25% 90%;
+    --primary-foreground: 224 50% 6%;
+    --secondary: 224 35% 15%;
+    --secondary-foreground: 38 25% 90%;
+    --muted: 224 35% 15%;
+    --muted-foreground: 220 15% 66%;
+    --accent: 38 65% 55%;
+    --accent-foreground: 224 50% 6%;
+    --destructive: 0 70% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 224 35% 15%;
+    --input: 224 20% 46%;
+    --ring: 38 65% 55%;
+    --good-fg: 152 50% 75%;
+    --good-bg: 152 40% 14%;
+    --warn-fg: 42 90% 75%;
+    --warn-bg: 36 60% 14%;
+    --crit-fg: 0 80% 80%;
+    --crit-bg: 0 50% 16%;
+    --info-fg: 217 80% 80%;
+    --info-bg: 217 50% 16%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
