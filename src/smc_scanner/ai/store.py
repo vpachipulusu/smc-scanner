@@ -154,7 +154,7 @@ class AnalysisStore(Protocol):
     def list_recent(self, limit: int) -> list[AnalysisRecord]: ...
 
 
-def _checked_path(raw: str | Path) -> Path:
+def checked_path(raw: str | Path) -> Path:
     """Absolute path; UNC (network) paths and directories are refused."""
     text = str(raw)
     if text.startswith(("\\\\", "//")):
@@ -170,7 +170,7 @@ def db_path_from_env() -> Path:
     raw = os.environ.get(DB_PATH_ENV, "").strip()
     if chr(0) in raw:
         raise StoreError(f"{DB_PATH_ENV} must not contain NUL characters")
-    path = _checked_path(raw or DEFAULT_DB_PATH)
+    path = checked_path(raw or DEFAULT_DB_PATH)
     log.info("analysis database: %s", path)
     return path
 
@@ -235,7 +235,7 @@ def _to_record(row: tuple[Any, ...]) -> AnalysisRecord:
 
 class SqliteAnalysisStore:
     def __init__(self, path: Path | str) -> None:
-        self._path = _checked_path(path)
+        self._path = checked_path(path)
         parent = self._path.parent
         if not parent.is_dir():
             raise StoreError(f"database directory does not exist: {parent}")
