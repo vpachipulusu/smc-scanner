@@ -16,6 +16,8 @@ from smc_scanner.ai.store import AnalysisKey, AnalysisRecord, SqliteAnalysisStor
 from smc_scanner.ai.verdict import AiVerdict
 from smc_scanner.ai_cli import DemoProvider
 from smc_scanner.api import app
+from smc_scanner.api import deps as deps_module
+from smc_scanner.api.routes import analyses as analyses_routes
 from smc_scanner.loaders.mt5 import MT5_MODULE_NAME
 from smc_scanner.models import ScanRow
 
@@ -437,7 +439,7 @@ def test_unavailable_provider_with_a_key_gets_a_fixed_message(
     def broken(_: str | None = None) -> None:
         raise AiError(f"AI_BASE_URL must be an https URL, key {SECRET}")
 
-    monkeypatch.setattr(api, "make_provider", broken)
+    monkeypatch.setattr(deps_module, "make_provider", broken)
 
     response = client.post("/analyse", json=BODY)
 
@@ -517,7 +519,7 @@ def test_store_errors_while_analysing_are_503(
     def broken(*_: object, **__: object) -> None:
         raise StoreError(f"analysis database {db_path}: locked")
 
-    monkeypatch.setattr(api, "analyse_hits", broken)
+    monkeypatch.setattr(analyses_routes, "analyse_hits", broken)
 
     response = client.post("/analyse", json=BODY)
 
