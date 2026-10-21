@@ -3,9 +3,11 @@ import { ArrowLeft } from 'lucide-react';
 
 import { ActionPill } from '@/components/common/action-pill';
 import { ConfidenceBar } from '@/components/common/confidence-bar';
+import { CalendarSlot } from '@/components/calendar/calendar-card';
 import { LogTradeButton } from '@/components/journal/log-trade-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { AiVerdict, AnalysisOut } from '@/lib/api/analyses';
+import type { CalendarResult } from '@/lib/api/calendar';
 import { NOT_AVAILABLE, formatPrice, formatUtc, stringList, textOrNA } from './format';
 import { MtfContext } from './mtf-context';
 import { SetupChart } from './setup-chart';
@@ -62,7 +64,13 @@ function Reasons({ verdict }: { verdict: AiVerdict }) {
 }
 
 /** One stored analysis in full. All text is rendered as text, never as markup. */
-export function AnalysisDetail({ analysis }: { analysis: AnalysisOut }) {
+export function AnalysisDetail({
+  analysis,
+  calendar,
+}: {
+  analysis: AnalysisOut;
+  calendar?: CalendarResult;
+}) {
   const { verdict } = analysis;
   return (
     <div className="space-y-6">
@@ -98,6 +106,8 @@ export function AnalysisDetail({ analysis }: { analysis: AnalysisOut }) {
       </p>
 
       <MtfContext analysis={analysis} />
+
+      {calendar && <CalendarSlot result={calendar} />}
 
       {verdict ? (
         <div className="grid gap-4 lg:grid-cols-2">
