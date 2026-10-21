@@ -4,14 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { makeClosedEntry, makeEntry } from '../../helpers/journal-fixtures';
 
+import { makeEmptyStats, makeStats } from '../../helpers/journal-stats-fixtures';
+
 const mocks = vi.hoisted(() => ({
   fetchJournal: vi.fn(),
   fetchJournalEntry: vi.fn(),
+  fetchJournalStats: vi.fn(),
   notFound: vi.fn(),
 }));
 vi.mock('@/lib/api/journal', () => ({
   fetchJournal: mocks.fetchJournal,
   fetchJournalEntry: mocks.fetchJournalEntry,
+  fetchJournalStats: mocks.fetchJournalStats,
 }));
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound }));
 vi.mock('@/app/journal/actions', () => ({
@@ -39,6 +43,8 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-10-21T08:30:45Z'));
   mocks.fetchJournal.mockReset();
   mocks.fetchJournalEntry.mockReset();
+  mocks.fetchJournalStats.mockReset();
+  mocks.fetchJournalStats.mockResolvedValue({ success: true, data: makeStats() });
   mocks.notFound.mockReset();
   mocks.notFound.mockImplementation(() => {
     throw new NotFoundSignal('NEXT_NOT_FOUND');
@@ -91,7 +97,7 @@ describe('JournalPage', () => {
     const html = renderToStaticMarkup(await list());
 
     expect(html).toContain('No trades logged yet');
-    expect(html).not.toContain('<table');
+    expect(html).not.toContain('aria-label="Journal entries"');
   });
 
   it('says so when a later page is empty', async () => {
@@ -110,6 +116,61 @@ describe('JournalPage', () => {
     expect(html).toContain(JOURNAL_UNAVAILABLE_MESSAGE);
     expect(html).toContain('Retry');
     expect(html).toContain('/journal?cursor=abc');
+  });
+});
+
+describe('JournalPage stats', () => {
+  const page = () => ({
+    success: true,
+    data: { items: [makeEntry()], next_cursor: null },
+  });
+
+  it('shows the stats cards, the equity curve and an export link next to the table', async () => {
+    mocks.fetchJournal.mockResolvedValue(page());
+
+    const html = renderToStaticMarkup(await list());
+
+    expect(mocks.fetchJournalStats).toHaveBeenCalledTimes(1);
+    expect(html).toContain('Win rate');
+    expect(html).toContain('role="img"');
+    expect(html).toContain('href="/journal/export"');
+    expect(html).toContain('Export CSV');
+    expect(html).toContain('aria-label="Journal entries"');
+  });
+
+  it('keeps the table and shows its own banner and retry link when the stats fail', async () => {
+    mocks.fetchJournal.mockResolvedValue(page());
+    mocks.fetchJournalStats.mockResolvedValue({
+      success: false,
+      error: 'Too many requests. Try again shortly.',
+      status: 429,
+    });
+
+    const html = renderToStaticMarkup(await list('abc'));
+
+    expect(html).toContain('Too many requests. Try again shortly.');
+    expect(html).toContain('href="/journal?cursor=abc"');
+    expect(html).toContain('aria-label="Journal entries"');
+    expect(html).not.toContain('Win rate');
+  });
+
+  it('keeps the stats when the list fails', async () => {
+    mocks.fetchJournal.mockResolvedValue({ success: false, error: JOURNAL_UNAVAILABLE_MESSAGE });
+
+    const html = renderToStaticMarkup(await list());
+
+    expect(html).toContain(JOURNAL_UNAVAILABLE_MESSAGE);
+    expect(html).toContain('Win rate');
+  });
+
+  it('notes that nothing is closed and omits the curve', async () => {
+    mocks.fetchJournal.mockResolvedValue(page());
+    mocks.fetchJournalStats.mockResolvedValue({ success: true, data: makeEmptyStats() });
+
+    const html = renderToStaticMarkup(await list());
+
+    expect(html).toContain('No closed trades yet');
+    expect(html).not.toContain('role="img"');
   });
 });
 
