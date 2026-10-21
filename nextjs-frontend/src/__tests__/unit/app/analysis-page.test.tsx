@@ -3,10 +3,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { makeAnalysis } from '../../helpers/fixtures';
+import { makeCalendar } from '../../helpers/calendar-fixtures';
 
-const mocks = vi.hoisted(() => ({ fetchAnalysis: vi.fn(), notFound: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  fetchAnalysis: vi.fn(),
+  fetchCalendar: vi.fn(),
+  notFound: vi.fn(),
+}));
 
 vi.mock('@/lib/api/analyses', () => ({ fetchAnalysis: mocks.fetchAnalysis }));
+vi.mock('@/lib/api/calendar', () => ({ fetchCalendar: mocks.fetchCalendar }));
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound }));
 
 import AnalysisPage from '@/app/analyses/[id]/page';
@@ -21,6 +27,8 @@ const page = (id: string) => AnalysisPage({ params: Promise.resolve({ id }) });
 describe('AnalysisPage', () => {
   beforeEach(() => {
     mocks.fetchAnalysis.mockReset();
+    mocks.fetchCalendar.mockReset();
+    mocks.fetchCalendar.mockResolvedValue({ success: true, data: makeCalendar() });
     mocks.notFound.mockReset();
     mocks.notFound.mockImplementation(() => {
       throw new NotFoundSignal('NEXT_NOT_FOUND');
@@ -35,6 +43,40 @@ describe('AnalysisPage', () => {
     expect(mocks.fetchAnalysis).toHaveBeenCalledWith(7);
     expect(html).toContain('EURUSD');
     expect(html).toContain('advisory only');
+  });
+
+  it('fetches the calendar for the analysis symbol and shows the card', async () => {
+    mocks.fetchAnalysis.mockResolvedValue({
+      success: true,
+      data: makeAnalysis({ symbol: 'GBPUSD' }),
+    });
+
+    const html = renderToStaticMarkup(await page('7'));
+
+    expect(mocks.fetchCalendar).toHaveBeenCalledWith('GBPUSD');
+    expect(html).toContain('Economic calendar');
+    expect(html).toContain('Non-Farm Payrolls');
+  });
+
+  it('still shows the analysis with a small note when the calendar fails', async () => {
+    mocks.fetchAnalysis.mockResolvedValue({ success: true, data: makeAnalysis({ id: 7 }) });
+    mocks.fetchCalendar.mockResolvedValue({
+      success: false,
+      error: 'Too many requests.',
+      status: 429,
+    });
+
+    const html = renderToStaticMarkup(await page('7'));
+
+    expect(html).toContain('advisory only');
+    expect(html).toContain('Economic calendar not loaded: Too many requests.');
+  });
+
+  it('does not fetch the calendar when the analysis is missing', async () => {
+    mocks.fetchAnalysis.mockResolvedValue({ success: false, error: 'x', status: 404 });
+
+    await expect(page('99')).rejects.toBeInstanceOf(NotFoundSignal);
+    expect(mocks.fetchCalendar).not.toHaveBeenCalled();
   });
 
   it.each(['abc', '0', '-3', '1.5', '1e2'])(

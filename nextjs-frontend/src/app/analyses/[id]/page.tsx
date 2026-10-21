@@ -6,6 +6,7 @@ import { AnalysisDetail } from '@/components/analyses/analysis-detail';
 import { AnalysisLoadError } from '@/components/analyses/analysis-load-error';
 import { parseAnalysisId } from '@/components/analyses/format';
 import { fetchAnalysis } from '@/lib/api/analyses';
+import { fetchCalendar } from '@/lib/api/calendar';
 
 /** The stored analysis can be re-run elsewhere, so the page is always read live. */
 export const dynamic = 'force-dynamic';
@@ -35,5 +36,6 @@ export default async function AnalysisPage({ params }: Props) {
     if (result.status === 404) notFound();
     return <AnalysisLoadError message={result.error} id={id} />;
   }
-  return <AnalysisDetail analysis={result.data} />;
+  const calendar = await fetchCalendar(result.data.symbol);
+  return <AnalysisDetail analysis={result.data} calendar={calendar} />;
 }
