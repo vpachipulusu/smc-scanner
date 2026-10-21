@@ -417,3 +417,89 @@ def test_delete_alerts_older_than_keeps_recent_rows(tmp_path: Path) -> None:
     assert removed == 1
     assert not store.claim_alert(new, T0)  # still remembered
     assert store.claim_alert(old, T0)  # forgotten, so claimable again
+
+
+# --- multi-timeframe flags ------------------------------------------------------------
+
+
+def test_mtf_flags_default_off_and_round_trip(tmp_path: Path) -> None:
+    store = repo(tmp_path)
+    plain = store.add(make())
+    flagged = store.add(make(name="mtf", mtf=True, require_htf_aligned=True))
+
+    assert (plain.mtf, plain.require_htf_aligned) == (False, False)
+    assert store.get(flagged.id or 0) == flagged
+    assert flagged.mtf and flagged.require_htf_aligned
+
+
+def test_update_changes_the_mtf_flags(tmp_path: Path) -> None:
+    store = repo(tmp_path)
+    saved = store.add(make())
+
+    updated = store.update(Schedule(**{**saved.__dict__, "mtf": True, "require_htf_aligned": True}))
+
+    assert updated.mtf and updated.require_htf_aligned
+    assert store.get(saved.id or 0) == updated
+
+
+def test_require_htf_aligned_needs_mtf() -> None:
+    with pytest.raises(ValueError, match="mtf"):
+        make(require_htf_aligned=True)
+
+
+def _legacy_schedules_table(path: Path) -> None:
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE schedules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,"
+            " enabled INTEGER NOT NULL, source TEXT NOT NULL, tf TEXT NOT NULL,"
+            " symbols TEXT NOT NULL, frequency TEXT NOT NULL, min_score INTEGER NOT NULL,"
+            " min_confidence REAL NOT NULL, only_on_change INTEGER NOT NULL,"
+            " send_hold INTEGER NOT NULL, telegram_chat_id TEXT, last_run_at TEXT,"
+            " next_run_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO schedules (name, enabled, source, tf, symbols, frequency, min_score,"
+            " min_confidence, only_on_change, send_hold) VALUES"
+            " ('old', 1, 'demo', '1h', '[\"EURUSD\"]', '1h', 2, 0, 0, 0)"
+        )
+
+
+def test_existing_database_gains_the_columns_without_touching_user_version(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "smc.db"
+    SqliteAnalysisStore(path)  # sets the shared user_version
+    _legacy_schedules_table(path)
+    with sqlite3.connect(path) as conn:
+        before = conn.execute("PRAGMA user_version").fetchone()[0]
+
+    store = SqliteScheduleRepository(path)
+    SqliteScheduleRepository(path)  # a second open is idempotent
+
+    [old] = store.list_schedules()
+    assert (old.name, old.mtf, old.require_htf_aligned) == ("old", False, False)
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == before
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(schedules)")}
+    assert {"mtf", "require_htf_aligned"} <= columns
+
+
+class _RacingConn:
+    """Says the columns are missing, then loses the ALTER race to another process."""
+
+    def __init__(self, error: str) -> None:
+        self.error = error
+
+    def execute(self, sql: str) -> list[tuple[int, str]]:
+        if sql.startswith("PRAGMA"):
+            return []
+        raise sqlite3.OperationalError(self.error)
+
+
+def test_losing_the_migration_race_is_not_an_error() -> None:
+    SqliteScheduleRepository._add_missing_columns(_RacingConn("duplicate column name: mtf"))  # type: ignore[arg-type]
+
+
+def test_other_migration_errors_still_surface() -> None:
+    with pytest.raises(sqlite3.OperationalError, match="disk"):
+        SqliteScheduleRepository._add_missing_columns(_RacingConn("disk I/O error"))  # type: ignore[arg-type]

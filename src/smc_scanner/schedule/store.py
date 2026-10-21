@@ -60,7 +60,9 @@ _SCHEMA: Final = (
         send_hold INTEGER NOT NULL,
         telegram_chat_id TEXT,
         last_run_at TEXT,
-        next_run_at TEXT
+        next_run_at TEXT,
+        mtf INTEGER NOT NULL DEFAULT 0,
+        require_htf_aligned INTEGER NOT NULL DEFAULT 0
     )
     """,
     """
@@ -77,19 +79,22 @@ _SCHEMA: Final = (
 )
 _COLUMNS: Final = (
     "id, name, enabled, source, tf, symbols, frequency, min_score, min_confidence, "
-    "only_on_change, send_hold, telegram_chat_id, last_run_at, next_run_at"
+    "only_on_change, send_hold, telegram_chat_id, last_run_at, next_run_at, "
+    "mtf, require_htf_aligned"
 )
+# Columns added after the first release; each is added to an existing table when missing.
+_ADDED_COLUMNS: Final = ("mtf", "require_htf_aligned")
 _INSERT: Final = """
 INSERT INTO schedules (
     name, enabled, source, tf, symbols, frequency, min_score, min_confidence, only_on_change,
-    send_hold, telegram_chat_id, last_run_at, next_run_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    send_hold, telegram_chat_id, last_run_at, next_run_at, mtf, require_htf_aligned
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 # SET expressions read the row's old values, so the CASE sees the frequency/enabled being replaced.
 _UPDATE: Final = """
 UPDATE schedules SET
     name = ?, source = ?, tf = ?, symbols = ?, min_score = ?, min_confidence = ?,
-    only_on_change = ?, send_hold = ?, telegram_chat_id = ?,
+    only_on_change = ?, send_hold = ?, telegram_chat_id = ?, mtf = ?, require_htf_aligned = ?,
     next_run_at = CASE WHEN frequency = ? AND enabled = ? THEN next_run_at ELSE NULL END,
     frequency = ?, enabled = ?
 WHERE id = ?
@@ -127,6 +132,9 @@ class Schedule:
     id: int | None = None
     last_run_at: datetime | None = None
     next_run_at: datetime | None = None
+    # Multi-timeframe analysis: show the HTF bias to the AI; optionally drop hits it opposes.
+    mtf: bool = False
+    require_htf_aligned: bool = False
 
     def __post_init__(self) -> None:
         if not self.name.strip() or len(self.name) > MAX_NAME_CHARS:
@@ -145,6 +153,8 @@ class Schedule:
         chat = self.telegram_chat_id
         if chat is not None and not CHAT_ID_PATTERN.fullmatch(chat):
             raise ValueError("telegram_chat_id must be a numeric chat id or an @channel name")
+        if self.require_htf_aligned and not self.mtf:
+            raise ValueError("require_htf_aligned needs mtf")
         if self.min_score < 0:
             raise ValueError("min_score must not be negative")
         if not math.isfinite(self.min_confidence) or not 0 <= self.min_confidence <= MAX_CONFIDENCE:
@@ -233,7 +243,7 @@ def _symbols_from(text: str) -> tuple[str, ...]:
 
 def _to_schedule(row: tuple[Any, ...]) -> Schedule:
     (row_id, name, enabled, source, tf, symbols, frequency, min_score, min_confidence) = row[:9]
-    (only_on_change, send_hold, chat_id, last_run, next_run) = row[9:]
+    (only_on_change, send_hold, chat_id, last_run, next_run, mtf, require_aligned) = row[9:]
     try:
         return Schedule(
             name=name,
@@ -250,6 +260,8 @@ def _to_schedule(row: tuple[Any, ...]) -> Schedule:
             id=row_id,
             last_run_at=_parse_time(last_run),
             next_run_at=_parse_time(next_run),
+            mtf=bool(mtf),
+            require_htf_aligned=bool(require_aligned),
         )
     except ValueError as exc:
         raise StoreError(f"schedule database holds an invalid schedule: {exc}") from exc
@@ -267,6 +279,8 @@ def _fields(schedule: Schedule) -> tuple[Any, ...]:
         int(schedule.only_on_change),
         int(schedule.send_hold),
         schedule.telegram_chat_id,
+        int(schedule.mtf),
+        int(schedule.require_htf_aligned),
     )
 
 
@@ -283,6 +297,20 @@ class SqliteScheduleRepository:
                 raise StoreError(f"database {self._path} was written by a newer version")
             for statement in _SCHEMA:
                 conn.execute(statement)
+            self._add_missing_columns(conn)
+
+    @staticmethod
+    def _add_missing_columns(conn: sqlite3.Connection) -> None:
+        """Idempotent; the shared ``user_version`` is deliberately left alone."""
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(schedules)")}
+        for name in _ADDED_COLUMNS:
+            if name in columns:
+                continue
+            try:
+                conn.execute(f"ALTER TABLE schedules ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc):  # another process added it first
+                    raise
 
     def _create_private_file(self) -> None:
         """Create the file owner-only before SQLite does (best effort; Windows ignores modes)."""
@@ -318,6 +346,8 @@ class SqliteScheduleRepository:
             schedule.telegram_chat_id,
             _iso(schedule.last_run_at),
             _iso(schedule.next_run_at),
+            int(schedule.mtf),
+            int(schedule.require_htf_aligned),
         )
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM schedules").fetchone()[0]

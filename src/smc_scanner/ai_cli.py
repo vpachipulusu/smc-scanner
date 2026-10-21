@@ -60,15 +60,26 @@ def build_provider(name: str | None) -> AiProvider:
 
 class FrameCache:
     """Loader wrapper that remembers each frame it loaded, so hits can be re-analysed
-    without a second download."""
+    without a second download.
+
+    ``frames`` holds the first timeframe loaded (the one being scanned), by symbol, so a
+    multi-timeframe scan loading neighbours never replaces it; ``frames_by_timeframe`` holds
+    every frame by (symbol, timeframe).
+    """
 
     def __init__(self, inner: Loader) -> None:
         self._inner = inner
+        self._primary: str | None = None
         self.frames: dict[str, pd.DataFrame] = {}
+        self.frames_by_timeframe: dict[tuple[str, str], pd.DataFrame] = {}
 
     def load(self, symbol: str, timeframe: str, bars: int) -> pd.DataFrame:
         frame = self._inner.load(symbol, timeframe, bars)
-        self.frames[symbol] = frame
+        if self._primary is None:
+            self._primary = timeframe
+        if timeframe == self._primary:
+            self.frames[symbol] = frame
+        self.frames_by_timeframe[(symbol, timeframe)] = frame
         return frame
 
     def close(self) -> None:
