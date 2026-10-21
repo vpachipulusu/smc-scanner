@@ -53,6 +53,24 @@ def _fresh_rate_limits() -> Iterator[None]:
     api.reset_rate_limits()
 
 
+@pytest.fixture(autouse=True)
+def _no_calendar_network(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """The API builds its calendar service from a source factory: tests get an unavailable fake,
+    so nothing reaches the feed and the verdict context stays free of calendar blocks."""
+    from smc_scanner.api import deps
+    from smc_scanner.econ_calendar.fake import FakeCalendarSource
+    from smc_scanner.econ_calendar.models import CalendarSourceError
+
+    monkeypatch.setattr(
+        deps,
+        "_calendar_source_factory",
+        lambda: FakeCalendarSource(error=CalendarSourceError("no network in tests")),
+    )
+    deps._calendar_services.clear()
+    yield
+    deps._calendar_services.clear()
+
+
 @pytest.fixture
 def fvg_touching() -> pd.DataFrame:
     return with_warmup([*FVG_SETUP, TOUCH_LAST])

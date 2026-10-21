@@ -2329,6 +2329,132 @@
           }
         }
       }
+    },
+    "/calendar": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Get Calendar",
+        "description": "Economic events for the currencies that move ``symbol`` (an FX pair such as ``EURUSD``,\nor an index or metal such as ``USTEC`` or ``XAUUSD``), plus a rule-based ``immediate_risk``.\n\nThe feed is cached and refreshed at most hourly. If it cannot be reached the cached week is\nreturned as ``stale``, or an empty ``unavailable`` answer; the status is 200 either way.",
+        "operationId": "get_calendar",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[A-Za-z0-9._#@\\-]{1,32}$",
+              "description": "FX pair, index or metal, e.g. EURUSD, USTEC, XAUUSD",
+              "title": "Symbol"
+            },
+            "description": "FX pair, index or metal, e.g. EURUSD, USTEC, XAUUSD"
+          },
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 168,
+              "minimum": 1,
+              "description": "how many hours ahead to list events",
+              "default": 24,
+              "title": "Hours"
+            },
+            "description": "how many hours ahead to list events"
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No symbol could be loaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2916,6 +3042,158 @@
           "items"
         ],
         "title": "AnalysisPage"
+      },
+      "CalendarEventOut": {
+        "properties": {
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "Three-letter currency code, e.g. USD"
+          },
+          "impact": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "holiday"
+            ],
+            "title": "Impact"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Time",
+            "description": "When it is released, in UTC"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "actual": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual"
+          },
+          "forecast": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forecast"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "type": "object",
+        "required": [
+          "currency",
+          "impact",
+          "time",
+          "title"
+        ],
+        "title": "CalendarEventOut",
+        "description": "One scheduled release. Figures are null when the feed has none (yet)."
+      },
+      "CalendarResponse": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "title": "Symbol"
+          },
+          "currencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Currencies",
+            "description": "Currencies that move the symbol; empty when the symbol is not recognised"
+          },
+          "calendar_status": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale",
+              "unavailable"
+            ],
+            "title": "Calendar Status",
+            "description": "fresh: cache under an hour old or just fetched; stale: the feed failed and an older cache is shown; unavailable: no data at all"
+          },
+          "immediate_risk": {
+            "type": "string",
+            "enum": [
+              "none",
+              "elevated",
+              "high"
+            ],
+            "title": "Immediate Risk",
+            "description": "high: a high-impact event from 30 minutes ago to 2 hours ahead; elevated: a high-impact event 2-8 hours ahead or a medium-impact one in that same window; none otherwise. Computed from every cached event, whatever ``hours`` is"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "title": "As Of",
+            "description": "The time the response was computed for, in UTC"
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At",
+            "description": "When the shown data was fetched from the feed; null when unavailable"
+          },
+          "window_hours": {
+            "type": "integer",
+            "title": "Window Hours",
+            "description": "How far ahead of ``as_of`` events are listed"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarEventOut"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "Events in the window, oldest first: from two hours before ``as_of`` to ``window_hours`` after, for the symbol's currencies, at most 200"
+          }
+        },
+        "type": "object",
+        "required": [
+          "symbol",
+          "currencies",
+          "calendar_status",
+          "immediate_risk",
+          "as_of",
+          "fetched_at",
+          "window_hours",
+          "events"
+        ],
+        "title": "CalendarResponse",
+        "description": "Upcoming events for one symbol's currencies, with the calendar's health and the\nrule-based ``immediate_risk``. The call succeeds even when the feed is down: see\n``calendar_status``."
       },
       "ConfigResponse": {
         "properties": {

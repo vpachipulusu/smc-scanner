@@ -32,6 +32,7 @@ from smc_scanner.api.constants import (
 )
 from smc_scanner.api.deps import (
     AnalyseRateDep,
+    CalendarServiceDep,
     InternalKeyDep,
     ProviderFactoryDep,
     _analyse_lock,
@@ -108,6 +109,7 @@ def analyse(
     _: InternalKeyDep,
     __: AnalyseRateDep,
     make_ai_provider: ProviderFactoryDep,
+    calendar: CalendarServiceDep,
 ) -> AnalyseResponse:
     """Scan, then ask the AI about the best hits; every row comes back with its AI result.
 
@@ -158,6 +160,7 @@ def analyse(
                 min_score=body.min_score,
                 max_rows=body.max_rows,
                 budget=budget,
+                calendar=calendar.snapshot,
             )
     except BudgetExceededError as exc:
         raise _budget_refused(exc) from exc

@@ -38,7 +38,7 @@ BOS = LastBos(direction="bullish", level=101.23456789, time="2026-01-01T05:00:00
 
 
 def test_prompt_version_is_bumped_and_the_prompt_explains_the_blocks() -> None:
-    assert PROMPT_VERSION == "smc-verdict-2"
+    assert PROMPT_VERSION == "smc-verdict-3"
     assert "htf" in SYSTEM_PROMPT and "ltf" in SYSTEM_PROMPT
 
 
@@ -142,7 +142,7 @@ def test_analyst_stores_timeframes_sends_blocks_and_keeps_the_dedupe_key(tmp_pat
     saved = store.get(AnalysisKey("EURUSD", "1h", "FVG", row.zone_low, row.zone_high, row.bar_time))
     assert saved is not None and saved.context is not None
     assert saved.context["timeframes"] == {"higher": "4h", "lower": "30m"}
-    assert saved.prompt_version == "smc-verdict-2"
+    assert saved.prompt_version == "smc-verdict-3"
     [(_, user)] = provider.calls
     assert '"htf"' in user and '"ltf"' in user
 

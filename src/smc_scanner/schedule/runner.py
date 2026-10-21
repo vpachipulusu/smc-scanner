@@ -69,7 +69,7 @@ import pandas as pd
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from smc_scanner.ai.analyst import AnalysisResult, analyse_hits, make_hit_source
+from smc_scanner.ai.analyst import AnalysisResult, CalendarLookup, analyse_hits, make_hit_source
 from smc_scanner.ai.budget import BudgetExceededError, BudgetGuard
 from smc_scanner.ai.providers import AiProvider
 from smc_scanner.ai.store import AnalysisKey, AnalysisStore, StoreError
@@ -167,9 +167,11 @@ def default_analyse(
     store: AnalysisStore,
     clock: Clock,
     budget: BudgetGuard | None = None,
+    calendar: CalendarLookup | None = None,
 ) -> list[AnalysisResult]:
     """``analyse_hits`` over the scanned frames, gated by the schedule's ``min_score`` and,
-    when given, the daily AI budget (``BudgetExceededError`` ends the run, see ``_run``)."""
+    when given, the daily AI budget (``BudgetExceededError`` ends the run, see ``_run``).
+    ``calendar`` adds the economic calendar block to each verdict context."""
 
     source = make_hit_source(
         data.frames,
@@ -180,7 +182,7 @@ def default_analyse(
     )
     return analyse_hits(
         data.rows, source, provider, store, timeframe=schedule.tf, min_score=schedule.min_score,
-        now=clock, budget=budget,
+        now=clock, budget=budget, calendar=calendar,
     )  # fmt: skip
 
 

@@ -40,6 +40,7 @@ def test_operation_ids_are_plain_function_names() -> None:
         "get_journal_entry",
         "update_journal_entry",
         "delete_journal_entry",
+        "get_calendar",
     }
 
 

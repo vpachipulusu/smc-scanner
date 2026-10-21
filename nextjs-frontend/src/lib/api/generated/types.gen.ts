@@ -321,6 +321,102 @@ export type AnalysisPage = {
 };
 
 /**
+ * CalendarEventOut
+ *
+ * One scheduled release. Figures are null when the feed has none (yet).
+ */
+export type CalendarEventOut = {
+    /**
+     * Currency
+     *
+     * Three-letter currency code, e.g. USD
+     */
+    currency: string;
+    /**
+     * Impact
+     */
+    impact: 'high' | 'medium' | 'low' | 'holiday';
+    /**
+     * Time
+     *
+     * When it is released, in UTC
+     */
+    time: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Actual
+     */
+    actual?: number | null;
+    /**
+     * Forecast
+     */
+    forecast?: number | null;
+    /**
+     * Previous
+     */
+    previous?: number | null;
+};
+
+/**
+ * CalendarResponse
+ *
+ * Upcoming events for one symbol's currencies, with the calendar's health and the
+ * rule-based ``immediate_risk``. The call succeeds even when the feed is down: see
+ * ``calendar_status``.
+ */
+export type CalendarResponse = {
+    /**
+     * Symbol
+     */
+    symbol: string;
+    /**
+     * Currencies
+     *
+     * Currencies that move the symbol; empty when the symbol is not recognised
+     */
+    currencies: Array<string>;
+    /**
+     * Calendar Status
+     *
+     * fresh: cache under an hour old or just fetched; stale: the feed failed and an older cache is shown; unavailable: no data at all
+     */
+    calendar_status: 'fresh' | 'stale' | 'unavailable';
+    /**
+     * Immediate Risk
+     *
+     * high: a high-impact event from 30 minutes ago to 2 hours ahead; elevated: a high-impact event 2-8 hours ahead or a medium-impact one in that same window; none otherwise. Computed from every cached event, whatever ``hours`` is
+     */
+    immediate_risk: 'none' | 'elevated' | 'high';
+    /**
+     * As Of
+     *
+     * The time the response was computed for, in UTC
+     */
+    as_of: string;
+    /**
+     * Fetched At
+     *
+     * When the shown data was fetched from the feed; null when unavailable
+     */
+    fetched_at: string | null;
+    /**
+     * Window Hours
+     *
+     * How far ahead of ``as_of`` events are listed
+     */
+    window_hours: number;
+    /**
+     * Events
+     *
+     * Events in the window, oldest first: from two hours before ``as_of`` to ``window_hours`` after, for the symbol's currencies, at most 200
+     */
+    events: Array<CalendarEventOut>;
+};
+
+/**
  * ConfigResponse
  *
  * What the scan form needs: choices, defaults, limits and the watchlist per source.
@@ -2254,3 +2350,63 @@ export type UpdateJournalEntryResponses = {
 };
 
 export type UpdateJournalEntryResponse = UpdateJournalEntryResponses[keyof UpdateJournalEntryResponses];
+
+export type GetCalendarData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query: {
+        /**
+         * Symbol
+         *
+         * FX pair, index or metal, e.g. EURUSD, USTEC, XAUUSD
+         */
+        symbol: string;
+        /**
+         * Hours
+         *
+         * how many hours ahead to list events
+         */
+        hours?: number;
+    };
+    url: '/calendar';
+};
+
+export type GetCalendarErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * No symbol could be loaded
+     */
+    503: ErrorResponse;
+};
+
+export type GetCalendarError = GetCalendarErrors[keyof GetCalendarErrors];
+
+export type GetCalendarResponses = {
+    /**
+     * Successful Response
+     */
+    200: CalendarResponse;
+};
+
+export type GetCalendarResponse = GetCalendarResponses[keyof GetCalendarResponses];

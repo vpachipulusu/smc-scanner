@@ -65,6 +65,11 @@ MAX_LOGS_LIMIT = 100  # one below the job log's own cap, because one extra row d
 RUN_NOW_LOCK_TIMEOUT_SECONDS = 0.0  # run-now answers 409 at once instead of queueing behind a scan
 CHAT_ID_REGEX = r"^(?:-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
 
+CALENDAR_RATE_LIMIT = (60, 60.0)  # a cached read; the feed is fetched at most hourly
+DEFAULT_CALENDAR_HOURS = 24
+MAX_CALENDAR_HOURS = 168
+CALENDAR_PAST_HOURS = 2  # releases that just happened stay listed, with their actual figure
+MAX_CALENDAR_EVENTS = 200
 JOURNAL_RATE_LIMIT = (120, 60.0)  # every journal route; no money is spent
 JOURNAL_STATS_RATE_LIMIT = (10, 60.0)  # stats read and parse every closed row
 JOURNAL_NOT_FOUND_MESSAGE = "Journal entry not found"
