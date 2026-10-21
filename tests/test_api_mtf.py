@@ -99,7 +99,7 @@ def test_analyse_with_mtf_sends_the_blocks_and_stores_the_timeframes(
     assert any('"htf"' in user for _, user in provider.calls)
     analyses = client.get("/analyses").json()["items"]
     assert analyses
-    assert all(item["prompt_version"] == "smc-verdict-2" for item in analyses)
+    assert all(item["prompt_version"] == "smc-verdict-3" for item in analyses)
     assert any(len(item["timeframes_used"]) > 1 for item in analyses)
     assert all(item["timeframes_used"][0] == "1h" for item in analyses)
 

@@ -6,6 +6,7 @@ import secrets
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from functools import partial
 from pathlib import Path as FsPath
 from typing import Annotated
@@ -14,6 +15,7 @@ from fastapi import Depends, Header, HTTPException
 
 from smc_scanner.ai.analyst import (
     AnalysisResult,
+    CalendarLookup,
 )
 from smc_scanner.ai.budget import (
     BudgetConfigError,
@@ -35,6 +37,7 @@ from smc_scanner.api.constants import (
     ANALYSE_RATE_LIMIT,
     BUDGET_CONFIG_MESSAGE,
     BUDGET_MESSAGE,
+    CALENDAR_RATE_LIMIT,
     INTERNAL_KEY_ENV,
     INTERNAL_KEY_HEADER,
     JOURNAL_LIMIT_MESSAGE,
@@ -50,6 +53,10 @@ from smc_scanner.api.constants import (
     SCHEDULE_STORE_MESSAGE,
     STORE_UNAVAILABLE_MESSAGE,
 )
+from smc_scanner.econ_calendar.forexfactory import ForexFactoryCalendarSource
+from smc_scanner.econ_calendar.models import CalendarEvent, CalendarSource
+from smc_scanner.econ_calendar.service import CalendarService
+from smc_scanner.econ_calendar.store import SqliteCalendarStore, StoredCalendar
 from smc_scanner.journal.store import (
     JournalLimitError,
     JournalNotFoundError,
@@ -96,6 +103,7 @@ RATE_LIMITERS: dict[str, RateLimiter] = {
     "analyse": RateLimiter(*ANALYSE_RATE_LIMIT),
     "journal": RateLimiter(*JOURNAL_RATE_LIMIT),
     "journal_stats": RateLimiter(*JOURNAL_STATS_RATE_LIMIT),
+    "calendar": RateLimiter(*CALENDAR_RATE_LIMIT),
 }
 
 
@@ -123,6 +131,7 @@ ScanRateDep = Annotated[None, Depends(_rate_limit("scan"))]
 AnalyseRateDep = Annotated[None, Depends(_rate_limit("analyse"))]
 JournalRateDep = Annotated[None, Depends(_rate_limit("journal"))]
 JournalStatsRateDep = Annotated[None, Depends(_rate_limit("journal_stats"))]
+CalendarRateDep = Annotated[None, Depends(_rate_limit("calendar"))]
 
 
 def require_internal_key(
@@ -139,7 +148,60 @@ def require_internal_key(
 InternalKeyDep = Annotated[None, Depends(require_internal_key)]
 
 
-def _analyse_under_lock(stop: threading.Event, budget: BudgetGuard) -> AnalyseFn:
+class _NoCache:
+    """Stands in when the database cannot hold the calendar cache: keeps the last week in
+    memory, so the hourly refresh and the stale fallback still work."""
+
+    def __init__(self) -> None:
+        self._stored = StoredCalendar((), None)
+
+    def load(self) -> StoredCalendar:
+        return self._stored
+
+    def replace(self, events: list[CalendarEvent], fetched_at: datetime) -> None:
+        self._stored = StoredCalendar(tuple(events), fetched_at)
+
+
+_calendar_source_factory: Callable[[], CalendarSource] = ForexFactoryCalendarSource  # tests swap
+_calendar_services: dict[FsPath | None, CalendarService] = {}  # None: no usable database path
+_calendar_lock = threading.Lock()  # not _store_init_lock: run-now holds that while building deps
+
+
+def _calendar_service_for(db_path: FsPath | None) -> CalendarService:
+    """The process-wide calendar service for this database: one per path, so the hourly refresh,
+    the fetch lock and the failure backoff are shared by every request and scheduled run. A cache
+    that cannot be opened degrades to no cache, never to an error."""
+    with _calendar_lock:
+        service = _calendar_services.get(db_path)
+        if service is None:
+            try:
+                cache: SqliteCalendarStore | _NoCache = (
+                    _NoCache() if db_path is None else SqliteCalendarStore(db_path)
+                )
+            except StoreError as exc:
+                log.warning("calendar cache unavailable: %s", type(exc).__name__)
+                cache = _NoCache()
+            service = CalendarService(_calendar_source_factory(), cache)
+            _calendar_services[db_path] = service
+        return service
+
+
+def get_calendar_service() -> CalendarService:
+    """The calendar service on the shared database. Tests override this dependency."""
+    try:
+        path = db_path_from_env()
+    except StoreError as exc:
+        log.warning("calendar database path invalid: %s", type(exc).__name__)
+        return _calendar_service_for(None)
+    return _calendar_service_for(path)
+
+
+CalendarServiceDep = Annotated[CalendarService, Depends(get_calendar_service)]
+
+
+def _analyse_under_lock(
+    stop: threading.Event, budget: BudgetGuard, calendar: CalendarLookup | None = None
+) -> AnalyseFn:
     """``default_analyse`` under the lock ``/analyse`` uses, so a scheduled run and a request for
     the same hit never both call the provider. Waiting for the lock gives up once ``stop`` is set,
     so shutdown is not held up behind a slow ``/analyse``. Every analysis phase holds that lock,
@@ -153,7 +215,7 @@ def _analyse_under_lock(stop: threading.Event, budget: BudgetGuard) -> AnalyseFn
             if stop.is_set():
                 raise RuntimeError("stopped while waiting for the analysis lock")
         try:
-            return default_analyse(data, schedule, provider, store, clock, budget)
+            return default_analyse(data, schedule, provider, store, clock, budget, calendar)
         finally:
             _analyse_lock.release()
 
@@ -176,7 +238,7 @@ def _build_run_deps(db_path: FsPath, stop: threading.Event | None = None) -> Run
         analysis_store=analysis_store,
         provider_factory=partial(make_provider, AI_PROVIDER_NAME),
         scan=make_scan_fn(),
-        analyse=_analyse_under_lock(stop, budget),
+        analyse=_analyse_under_lock(stop, budget, _calendar_service_for(db_path).snapshot),
         scan_lock=_scan_lock,
         previous_action=partial(previous_action, db_path),
         telegram_token=token,

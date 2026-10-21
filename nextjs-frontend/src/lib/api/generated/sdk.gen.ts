@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateJournalEntryData, CreateJournalEntryErrors, CreateJournalEntryResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, DeleteJournalEntryData, DeleteJournalEntryErrors, DeleteJournalEntryResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetJournalEntryData, GetJournalEntryErrors, GetJournalEntryResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, HealthData, HealthErrors, HealthResponses, JournalStatsData, JournalStatsErrors, JournalStatsResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListJournalData, ListJournalErrors, ListJournalResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateJournalEntryData, UpdateJournalEntryErrors, UpdateJournalEntryResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses } from './types.gen';
+import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateJournalEntryData, CreateJournalEntryErrors, CreateJournalEntryResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, DeleteJournalEntryData, DeleteJournalEntryErrors, DeleteJournalEntryResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetCalendarData, GetCalendarErrors, GetCalendarResponses, GetJournalEntryData, GetJournalEntryErrors, GetJournalEntryResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, HealthData, HealthErrors, HealthResponses, JournalStatsData, JournalStatsErrors, JournalStatsResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListJournalData, ListJournalErrors, ListJournalResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateJournalEntryData, UpdateJournalEntryErrors, UpdateJournalEntryResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -217,3 +217,14 @@ export const updateJournalEntry = <ThrowOnError extends boolean = false>(options
         ...options.headers
     }
 });
+
+/**
+ * Get Calendar
+ *
+ * Economic events for the currencies that move ``symbol`` (an FX pair such as ``EURUSD``,
+ * or an index or metal such as ``USTEC`` or ``XAUUSD``), plus a rule-based ``immediate_risk``.
+ *
+ * The feed is cached and refreshed at most hourly. If it cannot be reached the cached week is
+ * returned as ``stale``, or an empty ``unavailable`` answer; the status is 200 either way.
+ */
+export const getCalendar = <ThrowOnError extends boolean = false>(options: Options<GetCalendarData, ThrowOnError>) => (options.client ?? client).get<GetCalendarResponses, GetCalendarErrors, ThrowOnError>({ url: '/calendar', ...options });

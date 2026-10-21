@@ -31,7 +31,7 @@ from smc_scanner.api.constants import (
     SCHEDULER_FALSY,
     SCHEDULER_TRUTHY,
 )
-from smc_scanner.api.routes import analyses, journal, scan, schedules
+from smc_scanner.api.routes import analyses, calendar, journal, scan, schedules
 from smc_scanner.api.schemas import ERROR_RESPONSES
 
 log = logging.getLogger(__name__)
@@ -150,5 +150,11 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts())
 app.add_exception_handler(StarletteHTTPException, _http_exception_handler)  # type: ignore[arg-type]
 app.add_exception_handler(RequestValidationError, _validation_handler)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, _unhandled_handler)
-for module in (scan, analyses, schedules, journal):  # registration order is the OpenAPI path order
+for module in (
+    scan,
+    analyses,
+    schedules,
+    journal,
+    calendar,
+):  # registration order is the OpenAPI path order
     app.include_router(module.router)

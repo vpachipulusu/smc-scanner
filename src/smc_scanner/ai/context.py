@@ -16,6 +16,7 @@ from typing import Final, Literal, NotRequired, SupportsFloat, TypedDict
 
 import pandas as pd
 
+from smc_scanner.econ_calendar.prompt import CalendarContext
 from smc_scanner.models import (
     BEARISH,
     BULLISH,
@@ -130,6 +131,8 @@ class ScanContext(TypedDict):
     timeframes: NotRequired[TimeframesContext]
     htf: NotRequired[MtfBlockContext]
     ltf: NotRequired[MtfBlockContext]
+    # present only when the economic calendar had something trustworthy to say
+    calendar: NotRequired[CalendarContext]
 
 
 def price_decimals(reference: float) -> int:
@@ -323,5 +326,14 @@ def with_mtf(context: ScanContext, mtf: MtfInputs, row: ScanRow) -> ScanContext:
         extended["htf"] = _block_context(mtf.htf, direction, decimals)
     if mtf.ltf is not None:
         extended["ltf"] = _block_context(mtf.ltf, direction, decimals)
+    _check_size(extended)
+    return extended
+
+
+def with_calendar(context: ScanContext, block: CalendarContext) -> ScanContext:
+    """A copy of ``context`` with the calendar ``block`` (already filtered by
+    ``econ_calendar.prompt.calendar_block``). ``ContextTooLargeError`` if it does not fit."""
+    extended = context.copy()
+    extended["calendar"] = block
     _check_size(extended)
     return extended

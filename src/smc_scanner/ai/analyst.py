@@ -24,11 +24,14 @@ import pandas as pd
 
 from smc_scanner.ai.budget import BudgetGuard, Reservation, lookup_price
 from smc_scanner.ai.budget import estimate_cost as worst_case_cost
-from smc_scanner.ai.context import build_context, with_mtf
+from smc_scanner.ai.context import ScanContext, build_context, with_calendar, with_mtf
 from smc_scanner.ai.prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_user_message
 from smc_scanner.ai.providers import MAX_TOKENS, AiError, AiProvider
 from smc_scanner.ai.store import AnalysisKey, AnalysisRecord, AnalysisStore, StoreError
 from smc_scanner.ai.verdict import AiVerdict, HitFacts, parse_verdict
+from smc_scanner.econ_calendar.models import CalendarSnapshot
+from smc_scanner.econ_calendar.prompt import calendar_block
+from smc_scanner.econ_calendar.symbols import currencies_for
 from smc_scanner.models import ScanRow, Structure, Swing, ZoneState
 from smc_scanner.mtf import FrameLookup, MtfInputs, build_mtf_inputs
 from smc_scanner.scanner import ScanOptions
@@ -70,6 +73,7 @@ class HitInputs:
 
 
 HitSource = Callable[[ScanRow], HitInputs]
+CalendarLookup = Callable[[datetime], CalendarSnapshot]  # never raises in practice; callers guard
 
 
 @dataclass(frozen=True)
@@ -208,6 +212,22 @@ class _Run:
     now: Callable[[], datetime]
     force: bool
     budget: BudgetGuard | None = None
+    calendar: CalendarLookup | None = None
+
+    def _with_calendar(self, built: ScanContext, row: ScanRow) -> ScanContext:
+        """``built`` plus the calendar block when there is one. Optional context: any failure
+        (a broken lookup, a block that does not fit) leaves ``built`` as it was."""
+        if self.calendar is None:
+            return built
+        try:
+            moment = _utc(self.now())
+            block = calendar_block(self.calendar(moment), currencies_for(row.instrument), moment)
+            return built if block is None else with_calendar(built, block)
+        except Exception as exc:  # noqa: BLE001 - the calendar must never block an analysis
+            log.warning(
+                "%s: calendar left out of the context: %s", row.instrument, type(exc).__name__
+            )
+            return built
 
     def _worst_case(self, user: str) -> float:
         """The dearest this call can bill: the whole input (over-estimated from its length) and
@@ -243,6 +263,7 @@ class _Run:
                     built = with_mtf(built, inputs.mtf, row)
                 except ValueError:  # optional blocks: too big or bad name -> base context only
                     log.warning("%s: MTF blocks left out of the context", row.instrument)
+            built = self._with_calendar(built, row)
             context = dict(built)
             user = build_user_message(built)
             facts = HitFacts(
@@ -352,6 +373,7 @@ def analyse_hits(
     force: bool = False,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     budget: BudgetGuard | None = None,
+    calendar: CalendarLookup | None = None,
 ) -> list[AnalysisResult]:
     """One result per input row, in input order.
 
@@ -364,10 +386,13 @@ def analyse_hits(
     ``budget`` caps the provider calls per UTC day. When a cap is reached ``BudgetExceededError``
     is raised out of this function (the one exception to "never raises"): rows analysed before
     it are already saved, the rest are not attempted, and a later run picks them up.
+
+    ``calendar`` (given the current time, returns the calendar snapshot) adds an economic
+    calendar block to each row's context; it is optional context and never makes a row fail.
     """
     listed = list(rows)
     _utc(now())  # fail fast on a naive clock
-    run = _Run(provider, store, source, timeframe, now, force, budget)
+    run = _Run(provider, store, source, timeframe, now, force, budget, calendar)
     results: dict[int, AnalysisResult] = {}
     eligible: list[tuple[int, ScanRow]] = []
     for index, row in enumerate(listed):
