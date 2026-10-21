@@ -60,11 +60,21 @@ describe('SiteNav', () => {
     await userEvent.tab();
     expect(screen.getByRole('link', { name: 'Analyses' })).toHaveFocus();
     await userEvent.tab();
+    expect(screen.getByRole('link', { name: 'Journal' })).toHaveFocus();
+    await userEvent.tab();
     expect(screen.getByRole('link', { name: 'Automation' })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('button', { name: /theme/ })).toHaveFocus();
+  });
+
+  it('links Journal and marks it current on /journal and below', () => {
+    nav.pathname = '/journal/new';
+    render(<SiteNav />);
+
+    expect(screen.getByRole('link', { name: 'Journal' })).toHaveAttribute('href', '/journal');
+    expect(screen.getByRole('link', { name: 'Journal' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('links Analyses and marks it current on /analyses and below', () => {

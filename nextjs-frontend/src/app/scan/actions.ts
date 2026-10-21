@@ -5,7 +5,17 @@ import { runAnalyse } from '@/lib/api/analyse';
 import { parseScanParams, type RawScanParams } from '@/lib/scan/params';
 import type { AnalyseState } from '@/lib/scan/analyse-state';
 
-const FORM_KEYS = ['source', 'tf', 'symbols', 'bars', 'swing', 'near', 'all'] as const;
+const FORM_KEYS = [
+  'source',
+  'tf',
+  'symbols',
+  'bars',
+  'swing',
+  'near',
+  'all',
+  'mtf',
+  'htf',
+] as const;
 const MAX_FIELD_LENGTH = 2000;
 
 /**

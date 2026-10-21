@@ -17,6 +17,9 @@ export const LIMITS = {
   minConfidenceMax: 100,
 } as const;
 
+/** The multi-timeframe checkboxes post "1"; the older switches post "on". */
+const MTF_ON_VALUES = ['on', '1'] as const;
+
 export const DEFAULT_MIN_SCORE = 2;
 export const MAX_FIELD_LENGTH = 2000;
 
@@ -34,7 +37,8 @@ export type FieldName =
   | 'frequency'
   | 'min_score'
   | 'min_confidence'
-  | 'telegram_chat_id';
+  | 'telegram_chat_id'
+  | 'require_htf_aligned';
 
 export type FieldErrors = Partial<Record<FieldName, string>>;
 
@@ -51,6 +55,8 @@ export type FormValues = {
   send_hold: boolean;
   enabled: boolean;
   telegram_chat_id: string;
+  mtf: boolean;
+  require_htf_aligned: boolean;
 };
 
 export const EMPTY_VALUES: FormValues = {
@@ -65,6 +71,8 @@ export const EMPTY_VALUES: FormValues = {
   send_hold: false,
   enabled: true,
   telegram_chat_id: '',
+  mtf: false,
+  require_htf_aligned: false,
 };
 
 export type ParsedSchedule =
@@ -83,6 +91,8 @@ export function valuesFromSchedule(schedule: ScheduleOut): FormValues {
     send_hold: schedule.send_hold,
     enabled: schedule.enabled,
     telegram_chat_id: schedule.telegram_chat_id ?? '',
+    mtf: schedule.mtf,
+    require_htf_aligned: schedule.require_htf_aligned,
   };
 }
 
@@ -91,8 +101,9 @@ function text(form: FormData, key: string): string {
   return typeof value === 'string' ? value.slice(0, MAX_FIELD_LENGTH).trim() : '';
 }
 
-function flag(form: FormData, key: string): boolean {
-  return form.get(key) === 'on';
+function flag(form: FormData, key: string, on: readonly string[] = ['on']): boolean {
+  const value = form.get(key);
+  return typeof value === 'string' && on.includes(value);
 }
 
 /** The submitted values as the form should show them again after an error. */
@@ -109,6 +120,8 @@ export function readValues(form: FormData): FormValues {
     send_hold: flag(form, 'send_hold'),
     enabled: flag(form, 'enabled'),
     telegram_chat_id: text(form, 'telegram_chat_id'),
+    mtf: flag(form, 'mtf', MTF_ON_VALUES),
+    require_htf_aligned: flag(form, 'require_htf_aligned', MTF_ON_VALUES),
   };
 }
 
@@ -185,6 +198,10 @@ export function parseScheduleForm(form: FormData): ParsedSchedule {
     errors.telegram_chat_id = 'Use a numeric chat id (e.g. -1001234567890) or an @channelname.';
   }
 
+  if (values.require_htf_aligned && !values.mtf) {
+    errors.require_htf_aligned = 'Include higher/lower timeframe context first.';
+  }
+
   if (
     Object.keys(errors).length > 0 ||
     !oneOf(SOURCES, values.source) ||
@@ -209,6 +226,8 @@ export function parseScheduleForm(form: FormData): ParsedSchedule {
       send_hold: values.send_hold,
       enabled: values.enabled,
       telegram_chat_id: chatId === '' ? null : chatId,
+      mtf: values.mtf,
+      require_htf_aligned: values.require_htf_aligned,
     },
   };
 }
