@@ -41,6 +41,8 @@ describe('parseScheduleForm', () => {
         send_hold: false,
         enabled: true,
         telegram_chat_id: null,
+        mtf: false,
+        require_htf_aligned: false,
       },
     });
   });

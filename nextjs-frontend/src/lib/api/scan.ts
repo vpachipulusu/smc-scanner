@@ -30,6 +30,10 @@ export type ScanQuery = {
   swing: number;
   near: number;
   allTouches: boolean;
+  /** Add the neighbouring timeframes' context. */
+  mtf: boolean;
+  /** Drop hits the higher timeframe does not confirm; the API rejects it without `mtf`. */
+  requireHtfAligned: boolean;
 };
 
 export const SCAN_UNAVAILABLE_MESSAGE =
@@ -78,6 +82,8 @@ export async function fetchScan(query: ScanQuery): Promise<ApiResult<ScanRespons
         swing: query.swing,
         near: query.near,
         all_touches: query.allTouches,
+        mtf: query.mtf,
+        require_htf_aligned: query.requireHtfAligned,
       },
     })
   );
