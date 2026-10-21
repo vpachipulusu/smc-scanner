@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 
 from smc_scanner import api
 from smc_scanner.api import app
+from smc_scanner.api import deps as deps_module
+from smc_scanner.api.routes import schedules as schedules_routes
 from smc_scanner.notify.telegram import SendResult
 
 client = TestClient(app, base_url="http://localhost")
@@ -19,7 +21,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", TOKEN)
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
     monkeypatch.delenv("SMC_INTERNAL_KEY", raising=False)
-    monkeypatch.setattr(api, "_telegram_test_at", -1000.0)
+    monkeypatch.setattr(schedules_routes, "_telegram_test_at", -1000.0)
     yield
     app.dependency_overrides.clear()
 
@@ -118,7 +120,7 @@ def test_the_default_sender_is_the_notifier(monkeypatch: pytest.MonkeyPatch) -> 
         seen.append((token, str(chat_id)))
         return SendResult(ok=True)
 
-    monkeypatch.setattr(api, "send_test_message", fake)
+    monkeypatch.setattr(deps_module, "send_test_message", fake)
 
     assert client.post("/telegram/test").status_code == 200
     assert seen == [(TOKEN, "42")]

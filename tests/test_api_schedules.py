@@ -14,6 +14,7 @@ from schedule_support import build_deps
 from smc_scanner import api
 from smc_scanner.ai.store import StoreError
 from smc_scanner.api import app
+from smc_scanner.api.routes import schedules as schedules_routes
 from smc_scanner.schedule.joblog import JobLogEntry, SqliteJobLogStore
 from smc_scanner.schedule.runner import RunDeps
 from smc_scanner.schedule.store import MAX_SCHEDULES, Schedule, SqliteScheduleRepository
@@ -319,7 +320,7 @@ def test_run_now_is_allowed_again_after_the_cooldown(
 ) -> None:
     created = _create()
     _use_deps(_fake_deps(db_path))
-    monkeypatch.setattr(api, "RUN_NOW_COOLDOWN_SECONDS", 0.0)
+    monkeypatch.setattr(schedules_routes, "RUN_NOW_COOLDOWN_SECONDS", 0.0)
 
     assert client.post(f"/schedules/{created['id']}/run").status_code == 200
     assert client.post(f"/schedules/{created['id']}/run").status_code == 200
