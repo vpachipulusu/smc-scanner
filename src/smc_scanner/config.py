@@ -52,3 +52,13 @@ MIN_BARS: Final[int] = ATR_PERIOD + 1
 MAX_BARS: Final[int] = 5000
 MAX_SWING_LENGTH: Final[int] = 100
 MAX_NEAR_ATR: Final[float] = 5.0
+
+
+def neighbour_timeframes(timeframe: str) -> tuple[str | None, str | None]:
+    """(higher, lower) timeframe next to ``timeframe`` in ``TIMEFRAMES``; None at either end."""
+    if timeframe not in TIMEFRAMES:
+        raise ValueError(f"timeframe must be one of {', '.join(TIMEFRAMES)}")
+    index = TIMEFRAMES.index(timeframe)
+    higher = TIMEFRAMES[index + 1] if index + 1 < len(TIMEFRAMES) else None
+    lower = TIMEFRAMES[index - 1] if index > 0 else None
+    return higher, lower

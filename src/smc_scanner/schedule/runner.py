@@ -69,7 +69,7 @@ import pandas as pd
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from smc_scanner.ai.analyst import AnalysisResult, HitInputs, analyse_hits, hit_inputs_from_ohlc
+from smc_scanner.ai.analyst import AnalysisResult, analyse_hits, make_hit_source
 from smc_scanner.ai.budget import BudgetExceededError, BudgetGuard
 from smc_scanner.ai.providers import AiProvider
 from smc_scanner.ai.store import AnalysisKey, AnalysisStore, StoreError
@@ -115,6 +115,8 @@ class ScanData:
     rows: tuple[ScanRow, ...]
     frames: Mapping[str, pd.DataFrame]
     options: ScanOptions
+    # every frame the scan loaded, by (symbol, timeframe): the neighbours of a multi-timeframe scan
+    all_frames: Mapping[tuple[str, str], pd.DataFrame] = field(default_factory=dict)
 
 
 ScanFn = Callable[[Schedule], ScanData]
@@ -169,9 +171,13 @@ def default_analyse(
     """``analyse_hits`` over the scanned frames, gated by the schedule's ``min_score`` and,
     when given, the daily AI budget (``BudgetExceededError`` ends the run, see ``_run``)."""
 
-    def source(row: ScanRow) -> HitInputs:
-        return hit_inputs_from_ohlc(data.frames[row.instrument], row, data.options)
-
+    source = make_hit_source(
+        data.frames,
+        data.options,
+        timeframe=schedule.tf,
+        mtf=schedule.mtf,
+        lookup=lambda symbol, timeframe: data.all_frames.get((symbol, timeframe)),
+    )
     return analyse_hits(
         data.rows, source, provider, store, timeframe=schedule.tf, min_score=schedule.min_score,
         now=clock, budget=budget,
@@ -227,10 +233,24 @@ def make_scan_fn(
 
     def scan(schedule: Schedule) -> ScanData:
         cache = FrameCache(loader_factory(schedule.source))
-        result = run_scan(cache, schedule.symbols, schedule.tf, bars, chosen)
+        result = run_scan(
+            cache,
+            schedule.symbols,
+            schedule.tf,
+            bars,
+            chosen,
+            mtf=schedule.mtf,
+            require_htf_aligned=schedule.require_htf_aligned,
+            ltf_min_score=schedule.min_score,
+        )
         if result.all_failed:
             raise RuntimeError("no symbol could be loaded")
-        return ScanData(rows=result.rows, frames=dict(cache.frames), options=chosen)
+        return ScanData(
+            rows=result.rows,
+            frames=dict(cache.frames),
+            options=chosen,
+            all_frames=dict(cache.frames_by_timeframe),
+        )
 
     return scan
 

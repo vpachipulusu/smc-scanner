@@ -15,8 +15,8 @@ without a provider call (bad data, oversized context) never counts towards ``max
 
 import logging
 import math
-from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final, Literal
 
@@ -24,12 +24,13 @@ import pandas as pd
 
 from smc_scanner.ai.budget import BudgetGuard, Reservation, lookup_price
 from smc_scanner.ai.budget import estimate_cost as worst_case_cost
-from smc_scanner.ai.context import build_context
+from smc_scanner.ai.context import build_context, with_mtf
 from smc_scanner.ai.prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_user_message
 from smc_scanner.ai.providers import MAX_TOKENS, AiError, AiProvider
 from smc_scanner.ai.store import AnalysisKey, AnalysisRecord, AnalysisStore, StoreError
 from smc_scanner.ai.verdict import AiVerdict, HitFacts, parse_verdict
 from smc_scanner.models import ScanRow, Structure, Swing, ZoneState
+from smc_scanner.mtf import FrameLookup, MtfInputs, build_mtf_inputs
 from smc_scanner.scanner import ScanOptions
 from smc_scanner.structure import analyse_structure, confirmed_swing_frame, confirmed_swings
 from smc_scanner.zones import evaluate_zones
@@ -65,6 +66,7 @@ class HitInputs:
     structure: Structure
     state: ZoneState
     swings: Sequence[Swing]
+    mtf: MtfInputs | None = None
 
 
 HitSource = Callable[[ScanRow], HitInputs]
@@ -99,6 +101,31 @@ def hit_inputs_from_ohlc(ohlc: pd.DataFrame, row: ScanRow, options: ScanOptions)
         ):
             return HitInputs(ohlc=ohlc, structure=structure, state=state, swings=swings)
     raise ValueError(f"{row.instrument}: zone {row.zone} not found in the scanned frame")
+
+
+def _no_frames(symbol: str, timeframe: str) -> None:
+    return None
+
+
+def make_hit_source(
+    frames: Mapping[str, pd.DataFrame],
+    options: ScanOptions,
+    *,
+    timeframe: str,
+    mtf: bool = False,
+    lookup: FrameLookup = _no_frames,
+) -> HitSource:
+    """A ``HitSource`` over the scanned frames (by symbol). With ``mtf`` each row also gets
+    the neighbour-timeframe views from ``lookup``; that happens when the analyst reaches the
+    row, so only rows sent to the AI pay for it. Missing neighbour data just leaves a view out."""
+
+    def source(row: ScanRow) -> HitInputs:
+        inputs = hit_inputs_from_ohlc(frames[row.instrument], row, options)
+        if not mtf:
+            return inputs
+        return replace(inputs, mtf=build_mtf_inputs(row, timeframe, options.swing_length, lookup))
+
+    return source
 
 
 def estimate_cost(model: str, tokens_in: int | None, tokens_out: int | None) -> float | None:
@@ -211,6 +238,11 @@ class _Run:
                 inputs.swings,
                 timeframe=self.timeframe,
             )
+            if inputs.mtf is not None:
+                try:
+                    built = with_mtf(built, inputs.mtf, row)
+                except ValueError:  # optional blocks: too big or bad name -> base context only
+                    log.warning("%s: MTF blocks left out of the context", row.instrument)
             context = dict(built)
             user = build_user_message(built)
             facts = HitFacts(

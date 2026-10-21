@@ -3,14 +3,20 @@ except logging."""
 
 import logging
 import math
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 
 import pandas as pd
 
-from smc_scanner.config import DEFAULT_NEAR_ATR, DEFAULT_SWING_LENGTH, MIN_BARS
+from smc_scanner.config import (
+    DEFAULT_NEAR_ATR,
+    DEFAULT_SWING_LENGTH,
+    MIN_BARS,
+    neighbour_timeframes,
+)
 from smc_scanner.loaders.base import Loader
-from smc_scanner.models import BULLISH, ScanRow
+from smc_scanner.models import BULLISH, Bias, ScanRow
+from smc_scanner.mtf import htf_allows, htf_bias
 from smc_scanner.scoring import score_zone
 from smc_scanner.structure import analyse_structure, confirmed_swing_frame, confirmed_swings
 from smc_scanner.zones import evaluate_zones, select_hits
@@ -44,6 +50,8 @@ class ScanResult:
     rows: tuple[ScanRow, ...]
     failures: tuple[ScanFailure, ...]
     scanned: int
+    # With ``mtf``: the higher-timeframe bias per symbol that had a hit (None = unknown).
+    htf_bias: Mapping[str, Bias | None] = field(default_factory=dict)
 
     @property
     def all_failed(self) -> bool:
@@ -96,27 +104,89 @@ def sort_rows(rows: Iterable[ScanRow]) -> list[ScanRow]:
     return sorted(rows, key=lambda row: (row.status != "TOUCHING", -row.score, row.dist_atr))
 
 
+def _load_htf_bias(
+    loader: Loader, symbol: str, higher: str | None, bars: int, options: ScanOptions
+) -> Bias | None:
+    """The higher timeframe's bias, or None when there is none or it cannot be loaded."""
+    if higher is None:
+        return None
+    try:
+        return htf_bias(loader.load(symbol, higher, bars), options.swing_length)
+    except Exception as exc:  # noqa: BLE001 - a missing HTF must not fail the symbol
+        log.warning("%r: no %s bias (%s)", symbol, higher, type(exc).__name__)
+        return None
+
+
+def _prefetch_lower(
+    loader: Loader,
+    rows: Iterable[ScanRow],
+    lower: str | None,
+    bars: int,
+    min_score: int,
+    max_rows: int | None,
+) -> None:
+    """Load the lower timeframe for the symbols with a row the AI may analyse, so the analyst
+    can read it from the loader's cache after the loader is closed."""
+    if lower is None:
+        return
+    eligible = sorted(  # the analyst takes the best rows first, so only those need the data
+        (row for row in rows if row.score >= min_score),
+        key=lambda row: (-row.score, row.status != "TOUCHING", row.dist_atr),
+    )
+    if max_rows is not None:
+        eligible = eligible[:max_rows]
+    for symbol in dict.fromkeys(row.instrument for row in eligible):
+        try:
+            loader.load(symbol, lower, bars)
+        except Exception as exc:  # noqa: BLE001 - the AI block is optional
+            log.warning("%r: no %s data (%s)", symbol, lower, type(exc).__name__)
+
+
 def scan_watchlist(
     loader: Loader,
     symbols: Iterable[str],
     timeframe: str,
     bars: int,
     options: ScanOptions,
+    *,
+    mtf: bool = False,
+    require_htf_aligned: bool = False,
+    ltf_min_score: int | None = None,
+    ltf_max_rows: int | None = None,
 ) -> ScanResult:
-    """Scan each symbol in turn. A failing symbol is logged, recorded and skipped."""
+    """Scan each symbol in turn. A failing symbol is logged, recorded and skipped.
+
+    ``mtf`` adds the higher timeframe's bias for every symbol with a hit (``ScanResult.htf_bias``).
+    ``require_htf_aligned`` (needs ``mtf``) then drops rows the HTF does not confirm; an unknown
+    HTF passes. ``ltf_min_score`` (with ``mtf``) loads the lower timeframe for hits scoring at
+    least that (best ``ltf_max_rows`` rows only), for the analyst; nothing is computed from it here.
+    """
+    if require_htf_aligned and not mtf:
+        raise ValueError("require_htf_aligned needs mtf")
+    higher, lower = neighbour_timeframes(timeframe) if mtf else (None, None)
     rows: list[ScanRow] = []
     failures: list[ScanFailure] = []
+    htf: dict[str, Bias | None] = {}
     scanned = 0
     for symbol in symbols:
         try:
             ohlc = loader.load(symbol, timeframe, bars)
-            rows.extend(scan_instrument(symbol, ohlc, options))
+            found = scan_instrument(symbol, ohlc, options)
+            if mtf and found:
+                htf[symbol] = _load_htf_bias(loader, symbol, higher, bars, options)
+                if require_htf_aligned:
+                    found = [row for row in found if htf_allows(row, htf[symbol])]
+            rows.extend(found)
             scanned += 1
         except Exception as exc:  # noqa: BLE001 - one bad symbol must not stop the scan
             message = f"{type(exc).__name__}: {exc}"
             log.error("%r: skipped (%s)", symbol, message)
             failures.append(ScanFailure(symbol=symbol, error=message))
-    return ScanResult(rows=tuple(sort_rows(rows)), failures=tuple(failures), scanned=scanned)
+    if mtf and ltf_min_score is not None:
+        _prefetch_lower(loader, rows, lower, bars, ltf_min_score, ltf_max_rows)
+    return ScanResult(
+        rows=tuple(sort_rows(rows)), failures=tuple(failures), scanned=scanned, htf_bias=htf
+    )
 
 
 def run_scan(
@@ -125,9 +195,24 @@ def run_scan(
     timeframe: str,
     bars: int,
     options: ScanOptions,
+    *,
+    mtf: bool = False,
+    require_htf_aligned: bool = False,
+    ltf_min_score: int | None = None,
+    ltf_max_rows: int | None = None,
 ) -> ScanResult:
     """``scan_watchlist`` with the loader closed afterwards, whatever happens."""
     try:
-        return scan_watchlist(loader, symbols, timeframe, bars, options)
+        return scan_watchlist(
+            loader,
+            symbols,
+            timeframe,
+            bars,
+            options,
+            mtf=mtf,
+            require_htf_aligned=require_htf_aligned,
+            ltf_min_score=ltf_min_score,
+            ltf_max_rows=ltf_max_rows,
+        )
     finally:
         loader.close()

@@ -57,6 +57,8 @@ class ScheduleCreate(BaseModel):
     send_hold: bool = False
     enabled: bool = True
     telegram_chat_id: ChatId | None = None
+    mtf: bool = False
+    require_htf_aligned: bool = False  # needs mtf (422 otherwise)
 
 
 class ScheduleUpdate(BaseModel):
@@ -77,6 +79,8 @@ class ScheduleUpdate(BaseModel):
     send_hold: bool = _OMITTED
     enabled: bool = _OMITTED
     telegram_chat_id: ChatId | None = None
+    mtf: bool = _OMITTED
+    require_htf_aligned: bool = _OMITTED
 
 
 class ScheduleOut(BaseModel):
@@ -92,6 +96,8 @@ class ScheduleOut(BaseModel):
     send_hold: bool
     enabled: bool
     telegram_chat_id: str | None
+    mtf: bool
+    require_htf_aligned: bool
     last_run_at: str | None = Field(max_length=MAX_LABEL_CHARS)
     next_run_at: str | None = Field(max_length=MAX_LABEL_CHARS)
 
