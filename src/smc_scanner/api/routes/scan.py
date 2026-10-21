@@ -14,6 +14,7 @@ from smc_scanner.api.constants import (
     NOTHING_LOADED_MESSAGE,
 )
 from smc_scanner.api.deps import InternalKeyDep, ScanRateDep, _ai_key_configured, _scan_lock
+from smc_scanner.api.helpers import _symbols
 from smc_scanner.api.schemas import (
     RETRY_AFTER_HEADER,
     ConfigResponse,
