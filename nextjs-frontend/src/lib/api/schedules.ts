@@ -58,6 +58,8 @@ function isSchedule(body: unknown): body is ScheduleOut {
     typeof body.send_hold === 'boolean' &&
     typeof body.enabled === 'boolean' &&
     isNullableString(body.telegram_chat_id) &&
+    typeof body.mtf === 'boolean' &&
+    typeof body.require_htf_aligned === 'boolean' &&
     isNullableString(body.last_run_at) &&
     isNullableString(body.next_run_at)
   );

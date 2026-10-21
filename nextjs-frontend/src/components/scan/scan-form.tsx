@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MtfOptions } from '@/components/scan/mtf-options';
 import type { ConfigResponse } from '@/lib/api/scan';
 import { LIMITS, SOURCES, TIMEFRAMES, scanHref, type ScanPageParams } from '@/lib/scan/params';
 
@@ -143,6 +144,15 @@ export function ScanForm({
           </p>
         </div>
       </div>
+
+      <MtfOptions
+        key={scanHref(params)}
+        idPrefix="scan"
+        mtfName="mtf"
+        requireName="htf"
+        defaultMtf={query.mtf}
+        defaultRequire={query.requireHtfAligned}
+      />
 
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex min-h-11 items-center gap-2 text-sm">

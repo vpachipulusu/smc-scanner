@@ -10,6 +10,7 @@ import { ANALYSE_DISABLED_HINT, NO_VERDICT_REASON, skipReason } from '@/lib/api/
 import type { AnalysedRowOut } from '@/lib/api/analyse';
 import type { ScanFailureOut } from '@/lib/api/scan';
 import { IDLE_ANALYSE_STATE, type AnalyseState } from '@/lib/scan/analyse-state';
+import { NOT_APPLICABLE, scanTimeframes, higherTimeframe } from '@/lib/scan/mtf';
 import { scanSearchParams, type ScanPageParams } from '@/lib/scan/params';
 
 /**
@@ -65,6 +66,19 @@ function AnalyseStatus({ pending, state }: { pending: boolean; state: AnalyseSta
   );
 }
 
+function MtfSummary({ params }: { params: ScanPageParams }) {
+  const { tf, requireHtfAligned } = params.query;
+  const used = scanTimeframes(tf);
+  return (
+    <p data-testid="mtf-summary" className="text-sm text-muted-foreground">
+      Timeframes used: {used.join(', ')}. Higher timeframe:{' '}
+      {higherTimeframe(tf, used) ?? NOT_APPLICABLE}. HTF alignment is advisory and not part of the
+      0-4 score.
+      {requireHtfAligned && ' Hits the higher timeframe does not confirm are hidden.'}
+    </p>
+  );
+}
+
 export function ScanAnalysis({
   params,
   rows,
@@ -116,7 +130,10 @@ export function ScanAnalysis({
           {state.message}
         </p>
       )}
-      {shownRows.length > 0 && <ScanTable rows={shownRows} showAi={analysed} />}
+      {params.query.mtf && <MtfSummary params={params} />}
+      {shownRows.length > 0 && (
+        <ScanTable rows={shownRows} showAi={analysed} showHtf={params.query.mtf} />
+      )}
       {analysed && <AiSkipped rows={withoutVerdict(state.rows)} />}
       <ScanFailures failures={shownFailures} />
     </div>

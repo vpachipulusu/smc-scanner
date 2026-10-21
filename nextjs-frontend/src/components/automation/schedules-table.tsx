@@ -42,6 +42,14 @@ export function SchedulesTable({ schedules }: { schedules: ScheduleOut[] }) {
             <TableCell label="Scan">
               {schedule.source} {schedule.tf} · every {schedule.frequency} ·{' '}
               {schedule.symbols.join(', ')}
+              {schedule.mtf && (
+                <span className="mt-1 flex flex-wrap gap-1">
+                  <StatusPill variant="info">Multi-timeframe</StatusPill>
+                  {schedule.require_htf_aligned && (
+                    <StatusPill variant="info">HTF aligned only</StatusPill>
+                  )}
+                </span>
+              )}
             </TableCell>
             <TableCell label="Last run">{formatDateTime(schedule.last_run_at)}</TableCell>
             <TableCell label="Next run">

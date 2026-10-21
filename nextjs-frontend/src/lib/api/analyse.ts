@@ -115,6 +115,9 @@ function checkedRow(value: unknown): AnalysedRowOut | null {
     in_ote: value.in_ote as boolean,
     trendline_ok: value.trendline_ok as boolean,
     ob_fvg: value.ob_fvg as boolean,
+    ...(BIASES.includes(value.htf_bias) && {
+      htf_bias: value.htf_bias as NonNullable<AnalysedRowOut['htf_bias']>,
+    }),
     ai: {
       status: ai.status as AiResultOut['status'],
       verdict: checkedVerdict(ai.verdict),
@@ -163,6 +166,8 @@ export async function runAnalyse(query: ScanQuery): Promise<AnalyseResult> {
         swing: query.swing,
         near: query.near,
         all_touches: query.allTouches,
+        mtf: query.mtf,
+        require_htf_aligned: query.requireHtfAligned,
       },
     });
     response = sdk.response;

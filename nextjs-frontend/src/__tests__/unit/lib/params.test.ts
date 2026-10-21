@@ -35,6 +35,8 @@ describe('parseScanParams', () => {
         swing: 5,
         near: 0.4,
         allTouches: true,
+        mtf: false,
+        requireHtfAligned: false,
       },
       every: 15,
     });
@@ -113,6 +115,8 @@ describe('scanHref', () => {
         swing: 7,
         near: 0.3,
         allTouches: true,
+        mtf: true,
+        requireHtfAligned: true,
       },
       every: 30,
     };
@@ -121,7 +125,7 @@ describe('scanHref', () => {
 
     expect(parseScanParams(raw)).toEqual(params);
     expect(scanHref(params)).toBe(
-      '/scan?source=demo&tf=4h&symbols=EURUSD%2CXAUUSD&bars=250&swing=7&near=0.3&all=1&every=30'
+      '/scan?source=demo&tf=4h&symbols=EURUSD%2CXAUUSD&bars=250&swing=7&near=0.3&all=1&mtf=1&htf=1&every=30'
     );
   });
 

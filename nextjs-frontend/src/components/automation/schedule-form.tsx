@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useActionState, useEffect, useRef } from 'react';
 
 import { saveScheduleAction } from '@/app/automation/actions';
+import { MtfOptions } from '@/components/scan/mtf-options';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -216,6 +217,16 @@ export function ScheduleForm({ schedule }: { schedule?: ScheduleOut }) {
           {fieldError('telegram_chat_id')}
         </div>
       </div>
+
+      <MtfOptions
+        key={state.status === 'error' ? JSON.stringify(state.values) : state.status}
+        idPrefix="schedule"
+        mtfName="mtf"
+        requireName="require_htf_aligned"
+        defaultMtf={values.mtf}
+        defaultRequire={values.require_htf_aligned}
+        requireError={errors.require_htf_aligned}
+      />
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
         <label className={CHECKBOX_LABEL_CLASSES}>

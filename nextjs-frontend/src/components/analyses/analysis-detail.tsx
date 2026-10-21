@@ -7,6 +7,7 @@ import { LogTradeButton } from '@/components/journal/log-trade-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { AiVerdict, AnalysisOut } from '@/lib/api/analyses';
 import { NOT_AVAILABLE, formatPrice, formatUtc, stringList, textOrNA } from './format';
+import { MtfContext } from './mtf-context';
 import { SetupChart } from './setup-chart';
 import { TradeSetupCard } from './trade-setup-card';
 
@@ -95,6 +96,8 @@ export function AnalysisDetail({ analysis }: { analysis: AnalysisOut }) {
       <p className="rounded-lg border p-3 text-sm text-muted-foreground">
         This verdict is advisory only, no orders are placed.
       </p>
+
+      <MtfContext analysis={analysis} />
 
       {verdict ? (
         <div className="grid gap-4 lg:grid-cols-2">

@@ -84,7 +84,7 @@ function ScanResults({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground" data-testid="scan-summary">
           {result.count === 0
-            ? `No instrument is touching or near a fresh zone on ${query.tf}.`
+            ? `No instrument is touching or near a fresh zone on ${query.tf}${query.requireHtfAligned ? ' that the higher timeframe confirms' : ''}.`
             : `${result.count} ${result.count === 1 ? 'hit' : 'hits'} on ${query.tf} (${query.source}).`}
         </p>
         {result.count > 0 && (
