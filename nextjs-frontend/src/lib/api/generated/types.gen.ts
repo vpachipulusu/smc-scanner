@@ -337,6 +337,32 @@ export type ConfigResponse = {
 };
 
 /**
+ * CumulativePointOut
+ *
+ * The running R total after one closed trade.
+ */
+export type CumulativePointOut = {
+    /**
+     * Entry Id
+     */
+    entry_id: number;
+    /**
+     * Closed At
+     */
+    closed_at: string;
+    /**
+     * R
+     *
+     * R of this trade
+     */
+    r: number;
+    /**
+     * Cumulative R
+     */
+    cumulative_r: number;
+};
+
+/**
  * DeleteResponse
  */
 export type DeleteResponse = {
@@ -441,6 +467,280 @@ export type JobLogPage = {
      * Next Cursor
      */
     next_cursor?: string | null;
+};
+
+/**
+ * JournalEntryIn
+ *
+ * One manually recorded trade. ``exit`` and ``closed_at`` are set together or not at all.
+ */
+export type JournalEntryIn = {
+    /**
+     * Symbol
+     */
+    symbol: string;
+    /**
+     * Timeframe
+     */
+    timeframe: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Side
+     */
+    side: 'long' | 'short';
+    /**
+     * Entry
+     */
+    entry: number;
+    /**
+     * Stop
+     */
+    stop: number;
+    /**
+     * Exit
+     */
+    exit?: number | null;
+    /**
+     * Size
+     */
+    size?: number | null;
+    /**
+     * Pnl Currency
+     */
+    pnl_currency?: number | null;
+    /**
+     * Opened At
+     */
+    opened_at: string;
+    /**
+     * Closed At
+     */
+    closed_at?: string | null;
+    /**
+     * Notes
+     */
+    notes?: string;
+    /**
+     * Analysis Id
+     */
+    analysis_id?: number | null;
+};
+
+/**
+ * JournalEntryOut
+ *
+ * A stored entry. Timestamps are aware.
+ */
+export type JournalEntryOut = {
+    /**
+     * Symbol
+     */
+    symbol: string;
+    /**
+     * Timeframe
+     */
+    timeframe: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Side
+     */
+    side: 'long' | 'short';
+    /**
+     * Entry
+     */
+    entry: number;
+    /**
+     * Stop
+     */
+    stop: number;
+    /**
+     * Exit
+     */
+    exit?: number | null;
+    /**
+     * Size
+     */
+    size?: number | null;
+    /**
+     * Pnl Currency
+     */
+    pnl_currency?: number | null;
+    /**
+     * Opened At
+     */
+    opened_at: string;
+    /**
+     * Closed At
+     */
+    closed_at?: string | null;
+    /**
+     * Notes
+     */
+    notes?: string;
+    /**
+     * Analysis Id
+     */
+    analysis_id?: number | null;
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * JournalEntryUpdate
+ *
+ * Partial patch: unset fields are kept, ``None`` clears an optional field.
+ */
+export type JournalEntryUpdate = {
+    /**
+     * Symbol
+     */
+    symbol?: string | null;
+    /**
+     * Timeframe
+     */
+    timeframe?: '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | null;
+    /**
+     * Side
+     */
+    side?: 'long' | 'short' | null;
+    /**
+     * Entry
+     */
+    entry?: number | null;
+    /**
+     * Stop
+     */
+    stop?: number | null;
+    /**
+     * Exit
+     */
+    exit?: number | null;
+    /**
+     * Size
+     */
+    size?: number | null;
+    /**
+     * Pnl Currency
+     */
+    pnl_currency?: number | null;
+    /**
+     * Opened At
+     */
+    opened_at?: string | null;
+    /**
+     * Closed At
+     */
+    closed_at?: string | null;
+    /**
+     * Notes
+     */
+    notes?: string | null;
+    /**
+     * Analysis Id
+     */
+    analysis_id?: number | null;
+};
+
+/**
+ * JournalPage
+ *
+ * One page of entries, newest ``opened_at`` first.
+ */
+export type JournalPage = {
+    /**
+     * Items
+     */
+    items: Array<JournalEntryOut>;
+    /**
+     * Next Cursor
+     *
+     * Pass back as ``cursor`` for the next page; null on the last page
+     */
+    next_cursor?: string | null;
+};
+
+/**
+ * JournalStatsOut
+ *
+ * Aggregates over closed trades, in R (profit divided by the initial risk). Open trades are
+ * counted in ``open_trades`` only. Ratios are null while there is nothing to average.
+ */
+export type JournalStatsOut = {
+    /**
+     * Closed Trades
+     */
+    closed_trades: number;
+    /**
+     * Open Trades
+     */
+    open_trades: number;
+    /**
+     * Wins
+     *
+     * Closed trades with R above zero
+     */
+    wins: number;
+    /**
+     * Losses
+     *
+     * Closed trades with R below zero
+     */
+    losses: number;
+    /**
+     * Breakeven
+     *
+     * Closed trades with R of exactly zero
+     */
+    breakeven: number;
+    /**
+     * Win Rate
+     *
+     * wins / closed_trades, between 0 and 1
+     */
+    win_rate: number | null;
+    /**
+     * Average R
+     */
+    average_r: number | null;
+    /**
+     * Avg Win R
+     */
+    avg_win_r: number | null;
+    /**
+     * Avg Loss R
+     */
+    avg_loss_r: number | null;
+    /**
+     * Expectancy
+     *
+     * Expected R per trade; equals average_r
+     */
+    expectancy: number | null;
+    /**
+     * Total R
+     */
+    total_r: number;
+};
+
+/**
+ * JournalStatsResponse
+ */
+export type JournalStatsResponse = {
+    summary: JournalStatsOut;
+    /**
+     * Cumulative
+     *
+     * One point per closed trade, in close order
+     */
+    cumulative: Array<CumulativePointOut>;
 };
 
 /**
@@ -1572,3 +1872,329 @@ export type SendTelegramTestResponses = {
 };
 
 export type SendTelegramTestResponse = SendTelegramTestResponses[keyof SendTelegramTestResponses];
+
+export type ListJournalData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Cursor
+         */
+        cursor?: string | null;
+        /**
+         * Symbol
+         */
+        symbol?: string | null;
+    };
+    url: '/journal';
+};
+
+export type ListJournalErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Journal database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListJournalError = ListJournalErrors[keyof ListJournalErrors];
+
+export type ListJournalResponses = {
+    /**
+     * Successful Response
+     */
+    200: JournalPage;
+};
+
+export type ListJournalResponse = ListJournalResponses[keyof ListJournalResponses];
+
+export type CreateJournalEntryData = {
+    body: JournalEntryIn;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/journal';
+};
+
+export type CreateJournalEntryErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * The journal entry limit is reached
+     */
+    409: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Journal database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type CreateJournalEntryError = CreateJournalEntryErrors[keyof CreateJournalEntryErrors];
+
+export type CreateJournalEntryResponses = {
+    /**
+     * Successful Response
+     */
+    201: JournalEntryOut;
+};
+
+export type CreateJournalEntryResponse = CreateJournalEntryResponses[keyof CreateJournalEntryResponses];
+
+export type JournalStatsData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/journal/stats';
+};
+
+export type JournalStatsErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Journal database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type JournalStatsError = JournalStatsErrors[keyof JournalStatsErrors];
+
+export type JournalStatsResponses = {
+    /**
+     * Successful Response
+     */
+    200: JournalStatsResponse;
+};
+
+export type JournalStatsResponse2 = JournalStatsResponses[keyof JournalStatsResponses];
+
+export type DeleteJournalEntryData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Entry Id
+         */
+        entry_id: number;
+    };
+    query?: never;
+    url: '/journal/{entry_id}';
+};
+
+export type DeleteJournalEntryErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No journal entry with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Journal database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type DeleteJournalEntryError = DeleteJournalEntryErrors[keyof DeleteJournalEntryErrors];
+
+export type DeleteJournalEntryResponses = {
+    /**
+     * Successful Response
+     */
+    200: DeleteResponse;
+};
+
+export type DeleteJournalEntryResponse = DeleteJournalEntryResponses[keyof DeleteJournalEntryResponses];
+
+export type GetJournalEntryData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Entry Id
+         */
+        entry_id: number;
+    };
+    query?: never;
+    url: '/journal/{entry_id}';
+};
+
+export type GetJournalEntryErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No journal entry with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Journal database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type GetJournalEntryError = GetJournalEntryErrors[keyof GetJournalEntryErrors];
+
+export type GetJournalEntryResponses = {
+    /**
+     * Successful Response
+     */
+    200: JournalEntryOut;
+};
+
+export type GetJournalEntryResponse = GetJournalEntryResponses[keyof GetJournalEntryResponses];
+
+export type UpdateJournalEntryData = {
+    body: JournalEntryUpdate;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Entry Id
+         */
+        entry_id: number;
+    };
+    query?: never;
+    url: '/journal/{entry_id}';
+};
+
+export type UpdateJournalEntryErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No journal entry with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Journal database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type UpdateJournalEntryError = UpdateJournalEntryErrors[keyof UpdateJournalEntryErrors];
+
+export type UpdateJournalEntryResponses = {
+    /**
+     * Successful Response
+     */
+    200: JournalEntryOut;
+};
+
+export type UpdateJournalEntryResponse = UpdateJournalEntryResponses[keyof UpdateJournalEntryResponses];

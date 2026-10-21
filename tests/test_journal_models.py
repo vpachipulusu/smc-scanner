@@ -106,3 +106,10 @@ def test_update_cannot_clear_required_fields() -> None:
 def test_extreme_values_are_rejected(changes: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         JournalEntryIn(**raw(**changes))
+
+
+def test_tiny_prices_cannot_make_r_overflow() -> None:
+    with pytest.raises(ValidationError):
+        JournalEntryIn(
+            **raw(entry=1e-300, stop=0.5e-300, exit=1e12, closed_at=T0 + timedelta(hours=1))
+        )

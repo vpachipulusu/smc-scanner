@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, HealthData, HealthErrors, HealthResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses } from './types.gen';
+import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateJournalEntryData, CreateJournalEntryErrors, CreateJournalEntryResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, DeleteJournalEntryData, DeleteJournalEntryErrors, DeleteJournalEntryResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetJournalEntryData, GetJournalEntryErrors, GetJournalEntryResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, HealthData, HealthErrors, HealthResponses, JournalStatsData, JournalStatsErrors, JournalStatsResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListJournalData, ListJournalErrors, ListJournalResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateJournalEntryData, UpdateJournalEntryErrors, UpdateJournalEntryResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -152,5 +152,66 @@ export const sendTelegramTest = <ThrowOnError extends boolean = false>(options?:
     headers: {
         'Content-Type': 'application/json',
         ...options?.headers
+    }
+});
+
+/**
+ * List Journal
+ *
+ * Journal entries, newest ``opened_at`` first. Pass ``next_cursor`` back for the next page.
+ */
+export const listJournal = <ThrowOnError extends boolean = false>(options?: Options<ListJournalData, ThrowOnError>) => (options?.client ?? client).get<ListJournalResponses, ListJournalErrors, ThrowOnError>({ url: '/journal', ...options });
+
+/**
+ * Create Journal Entry
+ *
+ * Record a trade by hand. Leave ``exit`` and ``closed_at`` out while it is still open.
+ */
+export const createJournalEntry = <ThrowOnError extends boolean = false>(options: Options<CreateJournalEntryData, ThrowOnError>) => (options.client ?? client).post<CreateJournalEntryResponses, CreateJournalEntryErrors, ThrowOnError>({
+    url: '/journal',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Journal Stats
+ *
+ * Win rate, average R, expectancy and the cumulative-R series over closed trades.
+ *
+ * R is profit divided by the initial risk ``|entry - stop|``, for longs and shorts alike;
+ * currency P&L plays no part. ``open_trades`` is counted in a separate read, so it can lag a
+ * concurrent write by one entry. Declared before ``/journal/{entry_id}`` so it is not an id.
+ */
+export const journalStats = <ThrowOnError extends boolean = false>(options?: Options<JournalStatsData, ThrowOnError>) => (options?.client ?? client).get<JournalStatsResponses, JournalStatsErrors, ThrowOnError>({ url: '/journal/stats', ...options });
+
+/**
+ * Delete Journal Entry
+ *
+ * Delete one journal entry.
+ */
+export const deleteJournalEntry = <ThrowOnError extends boolean = false>(options: Options<DeleteJournalEntryData, ThrowOnError>) => (options.client ?? client).delete<DeleteJournalEntryResponses, DeleteJournalEntryErrors, ThrowOnError>({ url: '/journal/{entry_id}', ...options });
+
+/**
+ * Get Journal Entry
+ *
+ * One journal entry by id.
+ */
+export const getJournalEntry = <ThrowOnError extends boolean = false>(options: Options<GetJournalEntryData, ThrowOnError>) => (options.client ?? client).get<GetJournalEntryResponses, GetJournalEntryErrors, ThrowOnError>({ url: '/journal/{entry_id}', ...options });
+
+/**
+ * Update Journal Entry
+ *
+ * Change some fields; ``null`` clears an optional one (e.g. reopen a trade by clearing
+ * ``exit`` and ``closed_at`` together). The merged entry must still be valid.
+ */
+export const updateJournalEntry = <ThrowOnError extends boolean = false>(options: Options<UpdateJournalEntryData, ThrowOnError>) => (options.client ?? client).patch<UpdateJournalEntryResponses, UpdateJournalEntryErrors, ThrowOnError>({
+    url: '/journal/{entry_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
     }
 });

@@ -276,3 +276,11 @@ def test_database_rejects_rows_that_skip_validation(
         conn,
     ):
         conn.execute(sql)
+
+
+def test_open_count_counts_only_entries_without_an_exit(store: SqliteJournalStore) -> None:
+    assert store.open_count() == 0
+    store.add(make())
+    store.add(make())
+    store.add(make(exit=1.12, closed_at=T0 + timedelta(hours=1)))
+    assert store.open_count() == 2

@@ -18,10 +18,11 @@ Side = Literal["long", "short"]
 Timeframe = Literal["5m", "15m", "30m", "1h", "4h", "1d"]  # mirrors config.TIMEFRAMES
 Symbol = Annotated[str, StringConstraints(pattern=SYMBOL_REGEX)]
 MAX_AMOUNT: Final = 1e12  # keeps R-multiples and sums finite
+MIN_PRICE: Final = 1e-9  # with MIN_RELATIVE_RISK, bounds R at 1e27 (a tiny risk would overflow)
 MAX_ID: Final = 2**63 - 1  # SQLite INTEGER
 MIN_RELATIVE_RISK: Final = 1e-6  # |entry - stop| / entry
 
-Price = Annotated[float, Field(gt=0, le=MAX_AMOUNT, allow_inf_nan=False)]
+Price = Annotated[float, Field(ge=MIN_PRICE, le=MAX_AMOUNT, allow_inf_nan=False)]
 Size = Annotated[float, Field(gt=0, le=MAX_AMOUNT, allow_inf_nan=False)]
 Money = Annotated[float, Field(ge=-MAX_AMOUNT, le=MAX_AMOUNT, allow_inf_nan=False)]
 Notes = Annotated[str, StringConstraints(max_length=MAX_NOTES_CHARS)]

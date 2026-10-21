@@ -133,6 +133,10 @@ class JournalStore(Protocol):
         """Every closed entry, oldest ``closed_at`` first: the input for statistics."""
         ...
 
+    def open_count(self) -> int:
+        """How many entries have no exit yet."""
+        ...
+
 
 def _iso(moment: datetime | None) -> str | None:
     """Fixed-width UTC text, so string order is time order."""
@@ -328,6 +332,14 @@ class SqliteJournalStore:
                 "ORDER BY closed_at, id"
             ).fetchall()
         return self._readable(rows)
+
+    def open_count(self) -> int:
+        with self._connect() as conn:
+            return int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM journal_entries WHERE closed_at IS NULL"
+                ).fetchone()[0]
+            )
 
     @staticmethod
     def _readable(rows: list[tuple[Any, ...]]) -> list[JournalEntryOut]:
