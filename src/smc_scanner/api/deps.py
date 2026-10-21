@@ -37,6 +37,11 @@ from smc_scanner.api.constants import (
     BUDGET_MESSAGE,
     INTERNAL_KEY_ENV,
     INTERNAL_KEY_HEADER,
+    JOURNAL_LIMIT_MESSAGE,
+    JOURNAL_NOT_FOUND_MESSAGE,
+    JOURNAL_RATE_LIMIT,
+    JOURNAL_STATS_RATE_LIMIT,
+    JOURNAL_STORE_MESSAGE,
     RATE_LIMIT_MESSAGE,
     RUN_UNAVAILABLE_MESSAGE,
     SCAN_RATE_LIMIT,
@@ -44,6 +49,12 @@ from smc_scanner.api.constants import (
     SCHEDULE_NOT_FOUND_MESSAGE,
     SCHEDULE_STORE_MESSAGE,
     STORE_UNAVAILABLE_MESSAGE,
+)
+from smc_scanner.journal.store import (
+    JournalLimitError,
+    JournalNotFoundError,
+    JournalStore,
+    SqliteJournalStore,
 )
 from smc_scanner.notify.telegram import SendResult, send_test_message
 from smc_scanner.ratelimit import RateLimiter
@@ -83,6 +94,8 @@ _run_guard = RunGuard()  # shared by the scheduler and run-now: one run per sche
 RATE_LIMITERS: dict[str, RateLimiter] = {
     "scan": RateLimiter(*SCAN_RATE_LIMIT),
     "analyse": RateLimiter(*ANALYSE_RATE_LIMIT),
+    "journal": RateLimiter(*JOURNAL_RATE_LIMIT),
+    "journal_stats": RateLimiter(*JOURNAL_STATS_RATE_LIMIT),
 }
 
 
@@ -108,6 +121,8 @@ def _rate_limit(name: str) -> Callable[[], None]:
 
 ScanRateDep = Annotated[None, Depends(_rate_limit("scan"))]
 AnalyseRateDep = Annotated[None, Depends(_rate_limit("analyse"))]
+JournalRateDep = Annotated[None, Depends(_rate_limit("journal"))]
+JournalStatsRateDep = Annotated[None, Depends(_rate_limit("journal_stats"))]
 
 
 def require_internal_key(
@@ -314,3 +329,30 @@ def _existing(repo: SqliteScheduleRepository, schedule_id: int) -> Schedule:
     if schedule is None:
         raise HTTPException(status_code=404, detail=SCHEDULE_NOT_FOUND_MESSAGE)
     return schedule
+
+
+def _journal_store_unavailable(exc: StoreError) -> HTTPException:
+    log.error("journal store failed: %s", exc)  # the path stays in the log
+    return HTTPException(status_code=503, detail=JOURNAL_STORE_MESSAGE)
+
+
+@contextmanager
+def _journal_store_errors() -> Iterator[None]:
+    """Map the journal store's errors to the API's: not found, the cap, or a fixed 503."""
+    try:
+        yield
+    except JournalNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=JOURNAL_NOT_FOUND_MESSAGE) from exc
+    except JournalLimitError as exc:
+        raise HTTPException(status_code=409, detail=JOURNAL_LIMIT_MESSAGE) from exc
+    except StoreError as exc:
+        raise _journal_store_unavailable(exc) from exc
+
+
+def get_journal_store() -> JournalStore:
+    """The journal store on the shared database file. Tests override this dependency."""
+    with _journal_store_errors(), _store_init_lock:
+        return SqliteJournalStore(db_path_from_env())
+
+
+JournalStoreDep = Annotated[JournalStore, Depends(get_journal_store)]
