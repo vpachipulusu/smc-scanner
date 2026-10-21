@@ -64,3 +64,12 @@ DEFAULT_LOGS_LIMIT = 50
 MAX_LOGS_LIMIT = 100  # one below the job log's own cap, because one extra row detects "more"
 RUN_NOW_LOCK_TIMEOUT_SECONDS = 0.0  # run-now answers 409 at once instead of queueing behind a scan
 CHAT_ID_REGEX = r"^(?:-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$"
+
+JOURNAL_RATE_LIMIT = (120, 60.0)  # every journal route; no money is spent
+JOURNAL_STATS_RATE_LIMIT = (10, 60.0)  # stats read and parse every closed row
+JOURNAL_NOT_FOUND_MESSAGE = "Journal entry not found"
+JOURNAL_LIMIT_MESSAGE = "Journal entry limit reached"
+JOURNAL_STORE_MESSAGE = "Journal database unavailable"
+DEFAULT_JOURNAL_LIMIT = 50
+MAX_JOURNAL_LIMIT = 100
+MAX_JOURNAL_CURSOR_CHARS = 96

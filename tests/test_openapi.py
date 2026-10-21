@@ -34,6 +34,12 @@ def test_operation_ids_are_plain_function_names() -> None:
         "run_schedule_now",
         "list_schedule_logs",
         "send_telegram_test",
+        "list_journal",
+        "create_journal_entry",
+        "journal_stats",
+        "get_journal_entry",
+        "update_journal_entry",
+        "delete_journal_entry",
     }
 
 
