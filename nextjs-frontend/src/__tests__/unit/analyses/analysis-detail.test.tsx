@@ -42,6 +42,21 @@ describe('AnalysisDetail', () => {
     expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/');
   });
 
+  it('offers Log trade, prefilled from the analysis', () => {
+    render(<AnalysisDetail analysis={FULL} />);
+
+    const href = screen.getByRole('link', { name: 'Log trade' }).getAttribute('href') ?? '';
+    const url = new URL(href, 'http://x');
+    expect(url.pathname).toBe('/journal/new');
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      symbol: 'EURUSD',
+      side: 'long',
+      entry: '1.0975',
+      stop: '1.0955',
+      analysis_id: '9',
+    });
+  });
+
   it('escapes reason text instead of injecting markup', () => {
     const { container } = render(<AnalysisDetail analysis={FULL} />);
 
