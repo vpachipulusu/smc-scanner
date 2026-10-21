@@ -12,6 +12,7 @@ const LINKS: readonly NavItem[] = [
   { label: 'Dashboard', href: '/' },
   { label: 'Scan', href: '/scan' },
   { label: 'Analyses', href: '/analyses' },
+  { label: 'Journal', href: '/journal' },
   { label: 'Automation', href: '/automation' },
   { label: 'Settings', href: '/settings' },
 ];

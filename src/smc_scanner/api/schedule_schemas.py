@@ -17,7 +17,6 @@ from smc_scanner.api.constants import (
     MAX_SYMBOLS,
     SYMBOL_PATTERN,
 )
-from smc_scanner.api.helpers import _clip
 from smc_scanner.config import (
     ApiSource,
     Timeframe,

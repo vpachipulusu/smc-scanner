@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 
 import { ActionPill } from '@/components/common/action-pill';
 import { ConfidenceBar } from '@/components/common/confidence-bar';
+import { LogTradeButton } from '@/components/journal/log-trade-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { AiVerdict, AnalysisOut } from '@/lib/api/analyses';
 import { NOT_AVAILABLE, formatPrice, formatUtc, stringList, textOrNA } from './format';
@@ -89,6 +90,7 @@ export function AnalysisDetail({ analysis }: { analysis: AnalysisOut }) {
             <ConfidenceBar value={verdict.confidence} />
           </div>
         )}
+        <LogTradeButton analysis={analysis} />
       </header>
 
       <p className="rounded-lg border p-3 text-sm text-muted-foreground">
