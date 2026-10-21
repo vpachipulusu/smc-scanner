@@ -45,6 +45,8 @@ describe('runAnalyse', () => {
       swing: 10,
       near: 0.5,
       all_touches: true,
+      mtf: false,
+      require_htf_aligned: false,
     });
   });
 

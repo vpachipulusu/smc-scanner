@@ -48,6 +48,8 @@ describe('analyseScanAction', () => {
       swing: 10,
       near: 0.5,
       allTouches: true,
+      mtf: false,
+      requireHtfAligned: false,
     });
     expect(state).toEqual({ status: 'success', rows: [row], failures: [] });
   });

@@ -43,6 +43,8 @@ describe('Dashboard page', () => {
       swing: 10,
       near: 0.5,
       allTouches: false,
+      mtf: false,
+      requireHtfAligned: false,
     });
   });
 

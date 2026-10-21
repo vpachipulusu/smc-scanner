@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import type { AiResultOut } from '@/lib/api/analyse';
 import type { ScanRowOut } from '@/lib/api/scan';
+import { htfAlignment, htfAlignmentLabel, type HtfAlignment } from '@/lib/scan/mtf';
 import { cn } from '@/lib/utils';
 
 /** Rows arrive sorted by the API (TOUCHING first, then score, then distance); this only renders them. */
@@ -26,6 +27,13 @@ const BIAS_VARIANT: Record<ScanRowOut['bias'], StatusPillVariant> = {
   bullish: 'good',
   bearish: 'crit',
   range: 'neutral',
+};
+
+const ALIGNMENT_VARIANT: Record<HtfAlignment, StatusPillVariant> = {
+  aligned: 'good',
+  conflict: 'crit',
+  range: 'neutral',
+  'n/a': 'neutral',
 };
 
 export const MAX_SCORE = 4;
@@ -107,6 +115,13 @@ function NoValue() {
   );
 }
 
+function HtfCell({ row }: { row: ScanTableRow }) {
+  const alignment = htfAlignment(row);
+  return (
+    <StatusPill variant={ALIGNMENT_VARIANT[alignment]}>{htfAlignmentLabel(alignment)}</StatusPill>
+  );
+}
+
 function AiCells({ ai }: { ai: AiResultOut | undefined }) {
   const verdict = ai?.verdict ?? null;
   return (
@@ -125,9 +140,11 @@ function AiCells({ ai }: { ai: AiResultOut | undefined }) {
 export function ScanTable({
   rows,
   showAi = false,
+  showHtf = false,
 }: {
   rows: ReadonlyArray<ScanTableRow>;
   showAi?: boolean;
+  showHtf?: boolean;
 }) {
   return (
     <Table stacked>
@@ -149,6 +166,7 @@ export function ScanTable({
           <TableHead numeric>Age</TableHead>
           <TableHead numeric>Touches</TableHead>
           <TableHead>Bar</TableHead>
+          {showHtf && <TableHead>HTF</TableHead>}
           {showAi && (
             <>
               <TableHead>Action</TableHead>
@@ -212,6 +230,11 @@ export function ScanTable({
             <TableCell label="Bar" className="font-mono text-xs">
               {row.bar_time}
             </TableCell>
+            {showHtf && (
+              <TableCell label="HTF">
+                <HtfCell row={row} />
+              </TableCell>
+            )}
             {showAi && <AiCells ai={row.ai} />}
           </TableRow>
         ))}

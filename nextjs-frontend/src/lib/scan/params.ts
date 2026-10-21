@@ -28,6 +28,8 @@ export const DEFAULTS: ScanQuery = {
   swing: 10,
   near: 0.5,
   allTouches: false,
+  mtf: false,
+  requireHtfAligned: false,
 };
 
 export const SYMBOL_PATTERN = /^[A-Za-z0-9._#@-]{1,32}$/;
@@ -42,6 +44,10 @@ export type ScanPageParams = {
 };
 
 const TRUE_VALUES = new Set(['1', 'on', 'true', 'yes']);
+
+function isTruthy(value: string | undefined): boolean {
+  return value !== undefined && TRUE_VALUES.has(value.toLowerCase());
+}
 
 /** First value of a repeated param; an empty string (a cleared form field) counts as absent. */
 function first(value: Param): string | undefined {
@@ -78,6 +84,7 @@ export function parseScanParams(raw: RawScanParams): ScanPageParams {
     every: first(raw.every) ?? 0,
   });
   const all = first(raw.all);
+  const mtf = isTruthy(first(raw.mtf));
   return {
     query: {
       source: parsed.source,
@@ -86,7 +93,10 @@ export function parseScanParams(raw: RawScanParams): ScanPageParams {
       bars: parsed.bars,
       swing: parsed.swing,
       near: parsed.near,
-      allTouches: all !== undefined && TRUE_VALUES.has(all.toLowerCase()),
+      allTouches: isTruthy(all),
+      mtf,
+      // Alignment needs the higher timeframe, so it only counts with mtf (the API 422s otherwise).
+      requireHtfAligned: mtf && isTruthy(first(raw.htf)),
     },
     every: parsed.every,
   };
@@ -103,6 +113,8 @@ export function scanSearchParams(params: ScanPageParams): URLSearchParams {
   if (query.swing !== DEFAULTS.swing) out.set('swing', String(query.swing));
   if (query.near !== DEFAULTS.near) out.set('near', String(query.near));
   if (query.allTouches) out.set('all', '1');
+  if (query.mtf) out.set('mtf', '1');
+  if (query.mtf && query.requireHtfAligned) out.set('htf', '1');
   if (every > 0) out.set('every', String(every));
   return out;
 }

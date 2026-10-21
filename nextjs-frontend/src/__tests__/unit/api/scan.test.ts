@@ -52,6 +52,8 @@ const QUERY: ScanQuery = {
   swing: 5,
   near: 0.4,
   allTouches: true,
+  mtf: true,
+  requireHtfAligned: true,
 };
 
 describe('fetchScan', () => {
@@ -84,6 +86,8 @@ describe('fetchScan', () => {
       swing: '5',
       near: '0.4',
       all_touches: 'true',
+      mtf: 'true',
+      require_htf_aligned: 'true',
     });
   });
 

@@ -48,6 +48,8 @@ describe('ScanPage', () => {
       swing: 10,
       near: 0.5,
       allTouches: false,
+      mtf: false,
+      requireHtfAligned: false,
     });
     expect(html).toContain('2 hits on 15m (demo).');
     expect(html.match(/data-testid="scan-row"/g)).toHaveLength(2);
