@@ -14,6 +14,8 @@ export function makeSchedule(overrides: Partial<ScheduleOut> = {}): ScheduleOut 
     send_hold: false,
     enabled: true,
     telegram_chat_id: null,
+    mtf: false,
+    require_htf_aligned: false,
     last_run_at: '2026-10-20T14:03:00Z',
     next_run_at: '2026-10-20T15:03:00Z',
     ...overrides,

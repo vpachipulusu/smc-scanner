@@ -12,7 +12,7 @@ import json
 import math
 import re
 from collections.abc import Sequence
-from typing import Final, Literal, SupportsFloat, TypedDict
+from typing import Final, Literal, NotRequired, SupportsFloat, TypedDict
 
 import pandas as pd
 
@@ -28,6 +28,7 @@ from smc_scanner.models import (
     ZoneKind,
     ZoneState,
 )
+from smc_scanner.mtf import LastBos, MtfInputs, TimeframeView, row_direction
 from smc_scanner.scoring import is_aligned
 
 MAX_CANDLES: Final[int] = 30
@@ -92,6 +93,24 @@ class CandleContext(TypedDict):
     close: float | None
 
 
+class LastBosContext(TypedDict):
+    direction: Literal["bullish", "bearish"]
+    level: float | None
+    time: str
+
+
+class MtfBlockContext(TypedDict):
+    timeframe: str
+    bias: Bias
+    aligned: bool
+    last_bos: LastBosContext | None
+
+
+class TimeframesContext(TypedDict):
+    higher: str | None
+    lower: str | None
+
+
 class ScanContext(TypedDict):
     symbol: str
     timeframe: str
@@ -107,6 +126,10 @@ class ScanContext(TypedDict):
     trendline: float | None
     score: ScoreContext
     candles: list[CandleContext]
+    # present only when multi-timeframe analysis was requested
+    timeframes: NotRequired[TimeframesContext]
+    htf: NotRequired[MtfBlockContext]
+    ltf: NotRequired[MtfBlockContext]
 
 
 def price_decimals(reference: float) -> int:
@@ -187,6 +210,29 @@ def _score_context(row: ScanRow, structure: Structure, state: ZoneState) -> Scor
     )
 
 
+def _check_timeframe(timeframe: str | None) -> None:
+    if timeframe is not None and not _TIMEFRAME_PATTERN.fullmatch(timeframe):
+        raise ValueError("timeframe must match [A-Za-z0-9]{1,8}")
+
+
+def _bos_context(bos: LastBos | None, decimals: int) -> LastBosContext | None:
+    if bos is None:
+        return None
+    return LastBosContext(
+        direction=bos.direction, level=round_price(bos.level, decimals), time=_iso(bos.time)
+    )
+
+
+def _block_context(view: TimeframeView, direction: str, decimals: int) -> MtfBlockContext:
+    _check_timeframe(view.timeframe)
+    return MtfBlockContext(
+        timeframe=view.timeframe,
+        bias=view.bias,
+        aligned=view.bias == direction,
+        last_bos=_bos_context(view.last_bos, decimals),
+    )
+
+
 def _validate(ohlc: pd.DataFrame, row: ScanRow, timeframe: str) -> None:
     if not _SYMBOL_PATTERN.fullmatch(row.instrument):
         raise ValueError("symbol must match [A-Za-z0-9._-]{1,32}")
@@ -214,6 +260,7 @@ def build_context(
 ) -> ScanContext:
     """The payload for one hit. ``ohlc`` is the frame the hit was scanned on (last bar closed),
     ``swings`` its confirmed swings; ``row``, ``structure`` and ``state`` come from the scan.
+    Add multi-timeframe blocks with ``with_mtf``.
     """
     _validate(ohlc, row, timeframe)
     candle_count = min(max(candle_count, 0), MAX_CANDLES)
@@ -253,6 +300,28 @@ def build_context(
         score=_score_context(row, structure, state),
         candles=_candle_contexts(ohlc, candle_count, decimals),
     )
+    _check_size(context)
+    return context
+
+
+def _check_size(context: ScanContext) -> None:
     if len(json.dumps(context, sort_keys=True)) >= MAX_CONTEXT_CHARS:
         raise ContextTooLargeError(f"context exceeds {MAX_CONTEXT_CHARS} characters")
-    return context
+
+
+def with_mtf(context: ScanContext, mtf: MtfInputs, row: ScanRow) -> ScanContext:
+    """A copy of ``context`` with the ``timeframes`` record and the ``htf`` / ``ltf`` blocks that
+    are available. Timeframe names are the only free text, so they are checked against the same
+    pattern as the scan timeframe (ValueError otherwise)."""
+    _check_timeframe(mtf.higher)
+    _check_timeframe(mtf.lower)
+    decimals = price_decimals(row.price)
+    direction = row_direction(row)
+    extended = context.copy()
+    extended["timeframes"] = TimeframesContext(higher=mtf.higher, lower=mtf.lower)
+    if mtf.htf is not None:
+        extended["htf"] = _block_context(mtf.htf, direction, decimals)
+    if mtf.ltf is not None:
+        extended["ltf"] = _block_context(mtf.ltf, direction, decimals)
+    _check_size(extended)
+    return extended

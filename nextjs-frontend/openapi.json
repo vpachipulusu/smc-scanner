@@ -153,7 +153,7 @@
           "scanner"
         ],
         "summary": "Scan",
-        "description": "Scan the given symbols (or the watchlist) on one timeframe.\n\n503 when no symbol could be loaded at all (terminal down, bad login); otherwise the\nper-symbol failures are listed next to the rows.",
+        "description": "Scan the given symbols (or the watchlist) on one timeframe.\n\n503 when no symbol could be loaded at all (terminal down, bad login); otherwise the\nper-symbol failures are listed next to the rows. With ``mtf`` each row carries ``htf_bias``;\n``require_htf_aligned`` (422 without ``mtf``) drops rows it does not confirm, and rows whose\nhigher timeframe is unknown are kept.",
         "operationId": "scan",
         "parameters": [
           {
@@ -254,6 +254,30 @@
             }
           },
           {
+            "name": "mtf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "also report the higher-timeframe bias of each row",
+              "default": false,
+              "title": "Mtf"
+            },
+            "description": "also report the higher-timeframe bias of each row"
+          },
+          {
+            "name": "require_htf_aligned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "drop rows the higher timeframe does not confirm; needs mtf",
+              "default": false,
+              "title": "Require Htf Aligned"
+            },
+            "description": "drop rows the higher timeframe does not confirm; needs mtf"
+          },
+          {
             "name": "X-Internal-Key",
             "in": "header",
             "required": false,
@@ -292,7 +316,7 @@
             }
           },
           "422": {
-            "description": "Invalid request",
+            "description": "Invalid parameters, e.g. require_htf_aligned without mtf",
             "content": {
               "application/json": {
                 "schema": {
@@ -2573,6 +2597,16 @@
             "minimum": 1.0,
             "title": "Max Rows",
             "default": 5
+          },
+          "mtf": {
+            "type": "boolean",
+            "title": "Mtf",
+            "default": false
+          },
+          "require_htf_aligned": {
+            "type": "boolean",
+            "title": "Require Htf Aligned",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -2703,6 +2737,22 @@
             "maxLength": 100,
             "title": "Bar Time"
           },
+          "htf_bias": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "bullish",
+                  "bearish",
+                  "range"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Htf Bias"
+          },
           "ai": {
             "$ref": "#/components/schemas/AiResultOut"
           }
@@ -2807,6 +2857,14 @@
                 "type": "null"
               }
             ]
+          },
+          "timeframes_used": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Timeframes Used"
           }
         },
         "type": "object",
@@ -2825,7 +2883,8 @@
           "prompt_version",
           "attempts",
           "status",
-          "verdict"
+          "verdict",
+          "timeframes_used"
         ],
         "title": "AnalysisOut",
         "description": "One stored analysis. The context, token counts and error text stay in the database."
@@ -3974,6 +4033,22 @@
             "type": "string",
             "maxLength": 100,
             "title": "Bar Time"
+          },
+          "htf_bias": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "bullish",
+                  "bearish",
+                  "range"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Htf Bias"
           }
         },
         "type": "object",
@@ -4084,6 +4159,16 @@
               }
             ],
             "title": "Telegram Chat Id"
+          },
+          "mtf": {
+            "type": "boolean",
+            "title": "Mtf",
+            "default": false
+          },
+          "require_htf_aligned": {
+            "type": "boolean",
+            "title": "Require Htf Aligned",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -4192,6 +4277,14 @@
             ],
             "title": "Telegram Chat Id"
           },
+          "mtf": {
+            "type": "boolean",
+            "title": "Mtf"
+          },
+          "require_htf_aligned": {
+            "type": "boolean",
+            "title": "Require Htf Aligned"
+          },
           "last_run_at": {
             "anyOf": [
               {
@@ -4231,6 +4324,8 @@
           "send_hold",
           "enabled",
           "telegram_chat_id",
+          "mtf",
+          "require_htf_aligned",
           "last_run_at",
           "next_run_at"
         ],
@@ -4319,6 +4414,14 @@
               }
             ],
             "title": "Telegram Chat Id"
+          },
+          "mtf": {
+            "type": "boolean",
+            "title": "Mtf"
+          },
+          "require_htf_aligned": {
+            "type": "boolean",
+            "title": "Require Htf Aligned"
           }
         },
         "additionalProperties": false,

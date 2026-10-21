@@ -127,6 +127,14 @@ export type AnalyseRequest = {
      * Max Rows
      */
     max_rows?: number;
+    /**
+     * Mtf
+     */
+    mtf?: boolean;
+    /**
+     * Require Htf Aligned
+     */
+    require_htf_aligned?: boolean;
 };
 
 /**
@@ -222,6 +230,10 @@ export type AnalysedRowOut = {
      * Bar Time
      */
     bar_time: string;
+    /**
+     * Htf Bias
+     */
+    htf_bias?: 'bullish' | 'bearish' | 'range' | null;
     ai: AiResultOut;
 };
 
@@ -288,6 +300,10 @@ export type AnalysisOut = {
      */
     status: 'ok' | 'failed';
     verdict: AiVerdict | null;
+    /**
+     * Timeframes Used
+     */
+    timeframes_used: Array<string>;
 };
 
 /**
@@ -927,6 +943,10 @@ export type ScanRowOut = {
      * Bar Time
      */
     bar_time: string;
+    /**
+     * Htf Bias
+     */
+    htf_bias?: 'bullish' | 'bearish' | 'range' | null;
 };
 
 /**
@@ -979,6 +999,14 @@ export type ScheduleCreate = {
      * Telegram Chat Id
      */
     telegram_chat_id?: string | null;
+    /**
+     * Mtf
+     */
+    mtf?: boolean;
+    /**
+     * Require Htf Aligned
+     */
+    require_htf_aligned?: boolean;
 };
 
 /**
@@ -1044,6 +1072,14 @@ export type ScheduleOut = {
      */
     telegram_chat_id: string | null;
     /**
+     * Mtf
+     */
+    mtf: boolean;
+    /**
+     * Require Htf Aligned
+     */
+    require_htf_aligned: boolean;
+    /**
      * Last Run At
      */
     last_run_at: string | null;
@@ -1103,6 +1139,14 @@ export type ScheduleUpdate = {
      * Telegram Chat Id
      */
     telegram_chat_id?: string | null;
+    /**
+     * Mtf
+     */
+    mtf?: boolean;
+    /**
+     * Require Htf Aligned
+     */
+    require_htf_aligned?: boolean;
 };
 
 /**
@@ -1247,6 +1291,18 @@ export type ScanData = {
          * All Touches
          */
         all_touches?: boolean;
+        /**
+         * Mtf
+         *
+         * also report the higher-timeframe bias of each row
+         */
+        mtf?: boolean;
+        /**
+         * Require Htf Aligned
+         *
+         * drop rows the higher timeframe does not confirm; needs mtf
+         */
+        require_htf_aligned?: boolean;
     };
     url: '/scan';
 };
@@ -1257,7 +1313,7 @@ export type ScanErrors = {
      */
     401: ErrorResponse;
     /**
-     * Invalid request
+     * Invalid parameters, e.g. require_htf_aligned without mtf
      */
     422: ErrorResponse;
     /**

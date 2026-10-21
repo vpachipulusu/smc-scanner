@@ -27,6 +27,7 @@ export const CSV_COLUMNS = [
 const FORMULA_PREFIX = /^[=+\-@\t\r]/;
 
 function cell(value: ScanRowOut[keyof ScanRowOut]): string {
+  if (value == null) return '';
   if (typeof value === 'boolean') return value ? 'True' : 'False';
   if (typeof value === 'number') return String(value); // a minus sign is not a formula
   const text = FORMULA_PREFIX.test(value) ? `'${value}` : value;

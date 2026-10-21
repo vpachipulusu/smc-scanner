@@ -100,5 +100,6 @@ def test_scan_rows_match_the_response_model() -> None:
         "zone_age",
         "prior_touches",
         "bar_time",
+        "htf_bias",
     }
     assert body["failures"] == []
