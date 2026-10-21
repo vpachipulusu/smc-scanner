@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from smc_scanner import api
 from smc_scanner.ai.store import StoreError
 from smc_scanner.api import SCHEDULER_ENV, app
+from smc_scanner.api import deps as deps_module
 from smc_scanner.schedule.runner import SchedulerService, run_schedule
 from smc_scanner.schedule.store import Schedule
 
@@ -39,7 +40,7 @@ def fake(monkeypatch: pytest.MonkeyPatch) -> list[FakeService]:
         built.append(service)
         return service
 
-    monkeypatch.setattr(api, "_build_scheduler", build)
+    monkeypatch.setattr(deps_module, "_build_scheduler", build)
     return built
 
 
@@ -126,18 +127,16 @@ def test_bad_db_path_fails_startup_loudly(monkeypatch: pytest.MonkeyPatch, tmp_p
         pass
 
 
-def test_scheduled_analysis_waits_on_the_analyse_lock_until_stopped(tmp_path: Path) -> None:
+def test_scheduled_analysis_waits_on_the_analyse_lock_until_stopped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     deps = api._build_run_deps(tmp_path / "smc.db")
-    monkey_poll = 0.01
-    api.ANALYSE_LOCK_POLL_SECONDS, saved = monkey_poll, api.ANALYSE_LOCK_POLL_SECONDS
+    monkeypatch.setattr(deps_module, "ANALYSE_LOCK_POLL_SECONDS", 0.01)
 
-    try:
-        with api._analyse_lock:
-            deps.stop_event.set()
-            with pytest.raises(RuntimeError, match="analysis lock"):
-                deps.analyse(None, None, None, None, None)  # type: ignore[arg-type]
-    finally:
-        api.ANALYSE_LOCK_POLL_SECONDS = saved
+    with api._analyse_lock:
+        deps.stop_event.set()
+        with pytest.raises(RuntimeError, match="analysis lock"):
+            deps.analyse(None, None, None, None, None)  # type: ignore[arg-type]
 
 
 def test_unrecognised_value_warns_and_stays_off(
@@ -200,7 +199,7 @@ def test_real_service_starts_and_stops_cleanly(
         seen.append(service)
         return service
 
-    monkeypatch.setattr(api, "_build_scheduler", spy)
+    monkeypatch.setattr(deps_module, "_build_scheduler", spy)
 
     for _ in range(2):  # start-stop-start
         with TestClient(app, base_url="http://localhost") as client:

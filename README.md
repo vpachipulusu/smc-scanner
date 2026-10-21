@@ -278,7 +278,7 @@ be escaped by whatever renders it.
 | Shared | `config.py`, `ratelimit.py` (API rate limiter) |
 | Scheduler | `schedule/` (`timing.py`, `rules.py`, `store.py`, `joblog.py`, `runner.py`) |
 | Telegram | `notify/telegram.py` |
-| HTTP API | `api.py`, `openapi_export.py` |
+| HTTP API | `api/`, `openapi_export.py` |
 | Web | `nextjs-frontend/src/app` (`/scan`, `/analyses/[id]`, dashboard at the root page), `src/lib/api` |
 
 Story history lives in Jira (project TRAD): e.g. TRAD-13 job log, TRAD-14 schedule API,
