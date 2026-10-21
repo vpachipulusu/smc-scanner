@@ -6,13 +6,18 @@ import {
   createJournalEntry,
   deleteJournalEntry,
   getJournalEntry,
+  journalStats,
   listJournal,
   updateJournalEntry,
   type JournalEntryIn,
   type JournalEntryOut,
   type JournalEntryUpdate,
   type JournalPage,
+  type JournalStatsOut,
+  type JournalStatsResponse,
+  type CumulativePointOut,
 } from './generated';
+import { isStats } from '@/lib/journal/stats';
 
 /**
  * Server-only calls to the journal endpoints. Callers import these instead of the generated SDK.
@@ -20,7 +25,15 @@ import {
  * text is never passed on. Entry `notes` are user text: render them as escaped text only.
  */
 
-export type { JournalEntryIn, JournalEntryOut, JournalEntryUpdate, JournalPage };
+export type {
+  JournalEntryIn,
+  JournalEntryOut,
+  JournalEntryUpdate,
+  JournalPage,
+  JournalStatsResponse,
+  JournalStatsOut,
+  CumulativePointOut,
+};
 
 export type JournalResult<T> =
   { success: true; data: T } | { success: false; error: string; status?: number };
@@ -84,6 +97,13 @@ export async function fetchJournal(query: JournalQuery = {}): Promise<JournalRes
   if (!isOptionalString(body.next_cursor)) return badBody();
   const next = typeof body.next_cursor === 'string' ? body.next_cursor : null;
   return { success: true, data: { items, next_cursor: next } };
+}
+
+/** Aggregates and the equity series over closed trades. The API allows 10 calls a minute. */
+export async function fetchJournalStats(): Promise<JournalResult<JournalStatsResponse>> {
+  const result = await callBackend((client) => journalStats({ client }));
+  if (!result.success) return failure(result);
+  return isStats(result.data) ? { success: true, data: result.data } : badBody();
 }
 
 export async function fetchJournalEntry(id: number): Promise<JournalResult<JournalEntryOut>> {

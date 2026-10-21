@@ -6,6 +6,7 @@ import {
   editJournalEntry,
   fetchJournal,
   fetchJournalEntry,
+  fetchJournalStats,
   removeJournalEntry,
 } from '@/lib/api/journal';
 import {
@@ -20,6 +21,7 @@ import {
   journalErrorMessage,
 } from '@/lib/api/journal-messages';
 import { makeClosedEntry, makeEntry } from '../../helpers/journal-fixtures';
+import { makeStats } from '../../helpers/journal-stats-fixtures';
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -153,6 +155,38 @@ describe('journal wrapper', () => {
       success: false,
       error: JOURNAL_REQUEST_FAILED_MESSAGE,
       status: 500,
+    });
+  });
+
+  it('reads the stats and the cumulative curve', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(makeStats()));
+
+    const result = await fetchJournalStats();
+
+    expect(result.success && result.data.summary.closed_trades).toBe(4);
+    expect(result.success && result.data.cumulative).toHaveLength(3);
+    expect(new URL(fetchMock.mock.calls[0][0].url).pathname).toBe('/journal/stats');
+  });
+
+  it.each([
+    ['not an object', 'nope'],
+    ['no summary', { cumulative: [] }],
+    ['a bad point', { ...makeStats(), cumulative: [{ entry_id: 1 }] }],
+  ])('fails on stats with %s', async (_label, body) => {
+    fetchMock.mockResolvedValue(jsonResponse(body));
+    expect(await fetchJournalStats()).toEqual({
+      success: false,
+      error: JOURNAL_REQUEST_FAILED_MESSAGE,
+      status: 502,
+    });
+  });
+
+  it('maps a rate limited stats call to the fixed message', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ success: false, error: 'secret' }, 429));
+    expect(await fetchJournalStats()).toEqual({
+      success: false,
+      error: JOURNAL_RATE_LIMITED_MESSAGE,
+      status: 429,
     });
   });
 

@@ -1,12 +1,14 @@
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 
 import { ErrorBanner } from '@/components/dashboard/error-banner';
+import { EquityCurve } from '@/components/journal/equity-curve';
+import { JournalStatsCards } from '@/components/journal/journal-stats-cards';
 import { JournalPager } from '@/components/journal/journal-pager';
 import { JournalTable } from '@/components/journal/journal-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { fetchJournal } from '@/lib/api/journal';
+import { fetchJournal, fetchJournalStats } from '@/lib/api/journal';
 import { JOURNAL_HEADING_ID } from '@/lib/journal/ids';
 import { JOURNAL_PAGE_SIZE, journalHref, parseJournalCursor } from '@/lib/journal/params';
 
@@ -19,7 +21,11 @@ type SearchParams = Promise<{ cursor?: string | string[] }>;
 
 export default async function JournalPage({ searchParams }: { searchParams: SearchParams }) {
   const cursor = parseJournalCursor((await searchParams).cursor);
-  const result = await fetchJournal({ limit: JOURNAL_PAGE_SIZE, cursor });
+  // /journal/stats is limited to 10 calls a minute: a failure there only shows its own banner.
+  const [result, stats] = await Promise.all([
+    fetchJournal({ limit: JOURNAL_PAGE_SIZE, cursor }),
+    fetchJournalStats(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -34,13 +40,44 @@ export default async function JournalPage({ searchParams }: { searchParams: Sear
           </h1>
           <p className="text-muted-foreground">Trades you logged by hand, newest first.</p>
         </div>
-        <Button asChild>
-          <Link href="/journal/new">
-            <Plus aria-hidden="true" className="size-4" />
-            New entry
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" asChild>
+            {/* A plain link: a download, not a page, so it must not be prefetched. */}
+            <a href="/journal/export">
+              <Download aria-hidden="true" className="size-4" />
+              Export CSV
+            </a>
+          </Button>
+          <Button asChild>
+            <Link href="/journal/new">
+              <Plus aria-hidden="true" className="size-4" />
+              New entry
+            </Link>
+          </Button>
+        </div>
       </div>
+
+      {stats.success ? (
+        <>
+          <JournalStatsCards summary={stats.data.summary} />
+          {stats.data.cumulative.length > 0 && (
+            <Card>
+              <CardContent className="pt-6">
+                <EquityCurve points={stats.data.cumulative} />
+              </CardContent>
+            </Card>
+          )}
+        </>
+      ) : (
+        <div className="space-y-3">
+          <ErrorBanner message={stats.error} />
+          <Button variant="outline" asChild>
+            <Link href={journalHref(cursor)} aria-label="Retry loading statistics">
+              Retry
+            </Link>
+          </Button>
+        </div>
+      )}
 
       <Card>
         <CardContent className="space-y-4 pt-6">
@@ -48,7 +85,9 @@ export default async function JournalPage({ searchParams }: { searchParams: Sear
             <div className="space-y-3">
               <ErrorBanner message={result.error} />
               <Button variant="outline" asChild>
-                <Link href={journalHref(cursor)}>Retry</Link>
+                <Link href={journalHref(cursor)} aria-label="Retry loading entries">
+                  Retry
+                </Link>
               </Button>
             </div>
           ) : result.data.items.length === 0 ? (
