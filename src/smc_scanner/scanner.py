@@ -118,13 +118,24 @@ def _load_htf_bias(
 
 
 def _prefetch_lower(
-    loader: Loader, rows: Iterable[ScanRow], lower: str | None, bars: int, min_score: int
+    loader: Loader,
+    rows: Iterable[ScanRow],
+    lower: str | None,
+    bars: int,
+    min_score: int,
+    max_rows: int | None,
 ) -> None:
     """Load the lower timeframe for the symbols with a row the AI may analyse, so the analyst
     can read it from the loader's cache after the loader is closed."""
     if lower is None:
         return
-    for symbol in dict.fromkeys(row.instrument for row in rows if row.score >= min_score):
+    eligible = sorted(  # the analyst takes the best rows first, so only those need the data
+        (row for row in rows if row.score >= min_score),
+        key=lambda row: (-row.score, row.status != "TOUCHING", row.dist_atr),
+    )
+    if max_rows is not None:
+        eligible = eligible[:max_rows]
+    for symbol in dict.fromkeys(row.instrument for row in eligible):
         try:
             loader.load(symbol, lower, bars)
         except Exception as exc:  # noqa: BLE001 - the AI block is optional
@@ -141,13 +152,14 @@ def scan_watchlist(
     mtf: bool = False,
     require_htf_aligned: bool = False,
     ltf_min_score: int | None = None,
+    ltf_max_rows: int | None = None,
 ) -> ScanResult:
     """Scan each symbol in turn. A failing symbol is logged, recorded and skipped.
 
     ``mtf`` adds the higher timeframe's bias for every symbol with a hit (``ScanResult.htf_bias``).
     ``require_htf_aligned`` (needs ``mtf``) then drops rows the HTF does not confirm; an unknown
     HTF passes. ``ltf_min_score`` (with ``mtf``) loads the lower timeframe for hits scoring at
-    least that, for the analyst; nothing is computed from it here.
+    least that (best ``ltf_max_rows`` rows only), for the analyst; nothing is computed from it here.
     """
     if require_htf_aligned and not mtf:
         raise ValueError("require_htf_aligned needs mtf")
@@ -171,7 +183,7 @@ def scan_watchlist(
             log.error("%r: skipped (%s)", symbol, message)
             failures.append(ScanFailure(symbol=symbol, error=message))
     if mtf and ltf_min_score is not None:
-        _prefetch_lower(loader, rows, lower, bars, ltf_min_score)
+        _prefetch_lower(loader, rows, lower, bars, ltf_min_score, ltf_max_rows)
     return ScanResult(
         rows=tuple(sort_rows(rows)), failures=tuple(failures), scanned=scanned, htf_bias=htf
     )
@@ -187,6 +199,7 @@ def run_scan(
     mtf: bool = False,
     require_htf_aligned: bool = False,
     ltf_min_score: int | None = None,
+    ltf_max_rows: int | None = None,
 ) -> ScanResult:
     """``scan_watchlist`` with the loader closed afterwards, whatever happens."""
     try:
@@ -199,6 +212,7 @@ def run_scan(
             mtf=mtf,
             require_htf_aligned=require_htf_aligned,
             ltf_min_score=ltf_min_score,
+            ltf_max_rows=ltf_max_rows,
         )
     finally:
         loader.close()

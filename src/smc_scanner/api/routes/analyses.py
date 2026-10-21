@@ -1,6 +1,7 @@
 """``/analyse`` and the stored-analysis routes."""
 
 import logging
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query
@@ -8,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Path, Query
 from smc_scanner.ai.analyst import (
     AnalysisResult,
     analyse_hits,
-    hit_inputs_from_ohlc,
+    make_hit_source,
 )
 from smc_scanner.ai.budget import (
     BudgetExceededError,
@@ -54,9 +55,11 @@ from smc_scanner.api.schemas import (
     ScanRowOut,
 )
 from smc_scanner.loaders import make_loader
+from smc_scanner.models import Bias
 from smc_scanner.scanner import ScanOptions, run_scan
 
 log = logging.getLogger(__name__)
+_TIMEFRAME_NAME = re.compile(r"[A-Za-z0-9]{1,8}")
 router = APIRouter()
 
 
@@ -71,9 +74,9 @@ def _note(result: AnalysisResult) -> str:
     return SKIP_NOTES.get(result.status, "")
 
 
-def _analysed_row(result: AnalysisResult) -> AnalysedRowOut:
+def _analysed_row(result: AnalysisResult, htf_bias: Bias | None = None) -> AnalysedRowOut:
     ai = AiResultOut(status=result.status, verdict=result.verdict, note=_note(result))
-    return AnalysedRowOut(**ScanRowOut.from_row(result.row).model_dump(), ai=ai)
+    return AnalysedRowOut(**ScanRowOut.from_row(result.row, htf_bias).model_dump(), ai=ai)
 
 
 def _provider_failed_everywhere(results: list[AnalysisResult]) -> bool:
@@ -125,14 +128,30 @@ def analyse(
     wanted = _symbols(body.source, ",".join(body.symbols) if body.symbols else None)
     with _scan_lock:
         frames = FrameCache(make_loader(body.source))
-        result = run_scan(frames, wanted, body.tf, body.bars, options)
+        result = run_scan(
+            frames,
+            wanted,
+            body.tf,
+            body.bars,
+            options,
+            mtf=body.mtf,
+            require_htf_aligned=body.require_htf_aligned,
+            ltf_min_score=body.min_score,
+            ltf_max_rows=body.max_rows,
+        )
     if result.all_failed:
         raise HTTPException(status_code=503, detail=NOTHING_LOADED_MESSAGE)
     try:
         with _analyse_lock:
             results = analyse_hits(
                 result.rows,
-                lambda row: hit_inputs_from_ohlc(frames.frames[row.instrument], row, options),
+                make_hit_source(
+                    frames.frames,
+                    options,
+                    timeframe=body.tf,
+                    mtf=body.mtf,
+                    lookup=lambda symbol, tf: frames.frames_by_timeframe.get((symbol, tf)),
+                ),
                 provider,
                 store,
                 timeframe=body.tf,
@@ -150,7 +169,7 @@ def analyse(
         source=body.source,
         tf=body.tf,
         count=len(results),
-        rows=[_analysed_row(r) for r in results],
+        rows=[_analysed_row(r, result.htf_bias.get(r.row.instrument)) for r in results],
         failures=[ScanFailureOut(symbol=f.symbol, error=f.error) for f in result.failures],
     )
 
@@ -163,6 +182,25 @@ def _stored_verdict(record: AnalysisRecord) -> AiVerdict | None:
     except ValueError:
         log.warning("stored verdict %s does not validate", record.id)
         return None
+
+
+def _timeframes_used(record: AnalysisRecord) -> list[str]:
+    """The scan timeframe, then the neighbour timeframes whose block is in the stored context.
+    Stored JSON is untrusted: only well-formed timeframe names are returned."""
+    used = [record.key.tf] if _TIMEFRAME_NAME.fullmatch(record.key.tf) else []
+    context = record.context
+    if not isinstance(context, dict):
+        return used
+    for name in ("htf", "ltf"):
+        block = context.get(name)
+        timeframe = block.get("timeframe") if isinstance(block, dict) else None
+        if (
+            isinstance(timeframe, str)
+            and _TIMEFRAME_NAME.fullmatch(timeframe)
+            and timeframe not in used
+        ):
+            used.append(timeframe)
+    return used
 
 
 def _analysis_out(record: AnalysisRecord) -> AnalysisOut:
@@ -185,6 +223,7 @@ def _analysis_out(record: AnalysisRecord) -> AnalysisOut:
         attempts=record.attempts,
         status="ok" if verdict is not None and record.error is None else "failed",
         verdict=verdict,
+        timeframes_used=_timeframes_used(record),
     )
 
 

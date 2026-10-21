@@ -56,6 +56,7 @@ export function makeAnalysis(overrides: Partial<AnalysisOut> = {}): AnalysisOut 
     attempts: 1,
     status: 'ok',
     verdict: { action: 'BUY', confidence: 72 },
+    timeframes_used: ['1h'],
     ...overrides,
   };
 }

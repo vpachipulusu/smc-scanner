@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from smc_scanner import __version__
 from smc_scanner.api.constants import (
     API_SOURCES,
+    INVALID_REQUEST_MESSAGE,
     MAX_SYMBOLS,
     MAX_SYMBOLS_QUERY_LENGTH,
     NOTHING_LOADED_MESSAGE,
@@ -93,7 +94,7 @@ def _to_response(source: ApiSource, tf: Timeframe, result: ScanResult) -> ScanRe
         source=source,
         tf=tf,
         count=len(result.rows),
-        rows=[ScanRowOut.from_row(row) for row in result.rows],
+        rows=[ScanRowOut.from_row(row, result.htf_bias.get(row.instrument)) for row in result.rows],
         failures=[ScanFailureOut(symbol=f.symbol, error=f.error) for f in result.failures],
     )
 
@@ -103,11 +104,15 @@ def _to_response(source: ApiSource, tf: Timeframe, result: ScanResult) -> ScanRe
     response_model=ScanResponse,
     tags=["scanner"],
     responses={
+        422: {
+            "model": ErrorResponse,
+            "description": "Invalid parameters, e.g. require_htf_aligned without mtf",
+        },
         429: {
             "model": ErrorResponse,
             "description": "Too many scans; see the Retry-After header",
             "headers": RETRY_AFTER_HEADER,
-        }
+        },
     },
 )
 def scan(
@@ -125,16 +130,34 @@ def scan(
     swing: Annotated[int, Query(ge=1, le=MAX_SWING_LENGTH)] = DEFAULT_SWING_LENGTH,
     near: Annotated[float, Query(ge=0, le=MAX_NEAR_ATR)] = DEFAULT_NEAR_ATR,
     all_touches: bool = False,
+    mtf: Annotated[
+        bool, Query(description="also report the higher-timeframe bias of each row")
+    ] = False,
+    require_htf_aligned: Annotated[
+        bool, Query(description="drop rows the higher timeframe does not confirm; needs mtf")
+    ] = False,
 ) -> ScanResponse:
     """Scan the given symbols (or the watchlist) on one timeframe.
 
     503 when no symbol could be loaded at all (terminal down, bad login); otherwise the
-    per-symbol failures are listed next to the rows.
+    per-symbol failures are listed next to the rows. With ``mtf`` each row carries ``htf_bias``;
+    ``require_htf_aligned`` (422 without ``mtf``) drops rows it does not confirm, and rows whose
+    higher timeframe is unknown are kept.
     """
+    if require_htf_aligned and not mtf:
+        raise HTTPException(status_code=422, detail=INVALID_REQUEST_MESSAGE)
     options = ScanOptions(swing_length=swing, near_atr=near, all_touches=all_touches)
     wanted = _symbols(source, symbols)
     with _scan_lock:
-        result = run_scan(make_loader(source), wanted, tf, bars, options)
+        result = run_scan(
+            make_loader(source),
+            wanted,
+            tf,
+            bars,
+            options,
+            mtf=mtf,
+            require_htf_aligned=require_htf_aligned,
+        )
     if result.all_failed:
         raise HTTPException(status_code=503, detail=NOTHING_LOADED_MESSAGE)
     return _to_response(source, tf, result)

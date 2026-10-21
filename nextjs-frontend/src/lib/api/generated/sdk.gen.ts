@@ -36,7 +36,9 @@ export const config = <ThrowOnError extends boolean = false>(options?: Options<C
  * Scan the given symbols (or the watchlist) on one timeframe.
  *
  * 503 when no symbol could be loaded at all (terminal down, bad login); otherwise the
- * per-symbol failures are listed next to the rows.
+ * per-symbol failures are listed next to the rows. With ``mtf`` each row carries ``htf_bias``;
+ * ``require_htf_aligned`` (422 without ``mtf``) drops rows it does not confirm, and rows whose
+ * higher timeframe is unknown are kept.
  */
 export const scan = <ThrowOnError extends boolean = false>(options?: Options<ScanData, ThrowOnError>) => (options?.client ?? client).get<ScanResponses, ScanErrors, ThrowOnError>({ url: '/scan', ...options });
 

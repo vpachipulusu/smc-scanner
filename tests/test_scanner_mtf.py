@@ -119,3 +119,19 @@ def test_run_scan_forwards_the_flags_and_closes_the_loader() -> None:
 
     assert result.rows == ()
     assert loader.closed
+
+
+def test_ltf_prefetch_is_capped_to_the_best_rows() -> None:
+    frames = {
+        ("AAA", "1h"): HIT_FRAME,
+        ("BBB", "1h"): HIT_FRAME,
+        ("AAA", "30m"): zigzag(1),
+        ("BBB", "30m"): zigzag(1),
+    }
+    loader = TfLoader(frames)
+
+    scan_watchlist(
+        loader, ["AAA", "BBB"], "1h", 100, OPTIONS, mtf=True, ltf_min_score=0, ltf_max_rows=1
+    )
+
+    assert sum(1 for _, tf in loader.calls if tf == "30m") == 1

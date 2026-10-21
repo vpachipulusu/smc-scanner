@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from smc_scanner.ai.analyst import (
     DEFAULT_MAX_ROWS,
@@ -31,6 +31,8 @@ from smc_scanner.config import (
     Timeframe,
 )
 from smc_scanner.models import Bias, ScanRow, Status
+
+MAX_TIMEFRAMES_USED = 3
 
 
 class ErrorResponse(BaseModel):
@@ -74,10 +76,13 @@ class ScanRowOut(BaseModel):
     zone_age: int
     prior_touches: int
     bar_time: str = Field(max_length=MAX_LABEL_CHARS)
+    # Higher-timeframe bias, only with mtf; null when off or unknown. Not part of the score.
+    htf_bias: Bias | None = None
 
     @classmethod
-    def from_row(cls, row: ScanRow) -> "ScanRowOut":
-        return cls.model_validate(row, from_attributes=True)
+    def from_row(cls, row: ScanRow, htf_bias: Bias | None = None) -> "ScanRowOut":
+        out = cls.model_validate(row, from_attributes=True)
+        return out.model_copy(update={"htf_bias": htf_bias})
 
 
 class ScanFailureOut(BaseModel):
@@ -128,6 +133,14 @@ class AnalyseRequest(BaseModel):
     provider: Literal["claude"] | None = None
     min_score: int = Field(default=DEFAULT_MIN_SCORE, ge=0, le=MAX_AI_MIN_SCORE)
     max_rows: int = Field(default=DEFAULT_MAX_ROWS, ge=1, le=MAX_AI_ROWS)
+    mtf: bool = False
+    require_htf_aligned: bool = False
+
+    @model_validator(mode="after")
+    def _require_needs_mtf(self) -> "AnalyseRequest":
+        if self.require_htf_aligned and not self.mtf:
+            raise ValueError("require_htf_aligned needs mtf")
+        return self
 
 
 class AnalyseResponse(BaseModel):
@@ -156,6 +169,8 @@ class AnalysisOut(BaseModel):
     attempts: int
     status: Literal["ok", "failed"]
     verdict: AiVerdict | None
+    # The scan timeframe first, then the higher and lower ones whose data the AI was given.
+    timeframes_used: list[str] = Field(max_length=MAX_TIMEFRAMES_USED)
 
 
 class AnalysisPage(BaseModel):
