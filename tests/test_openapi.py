@@ -41,6 +41,11 @@ def test_operation_ids_are_plain_function_names() -> None:
         "update_journal_entry",
         "delete_journal_entry",
         "get_calendar",
+        "list_strategies",
+        "get_strategy",
+        "create_strategy",
+        "update_strategy",
+        "delete_strategy",
     }
 
 

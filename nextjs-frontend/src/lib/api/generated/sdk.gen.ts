@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateJournalEntryData, CreateJournalEntryErrors, CreateJournalEntryResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, DeleteJournalEntryData, DeleteJournalEntryErrors, DeleteJournalEntryResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetCalendarData, GetCalendarErrors, GetCalendarResponses, GetJournalEntryData, GetJournalEntryErrors, GetJournalEntryResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, HealthData, HealthErrors, HealthResponses, JournalStatsData, JournalStatsErrors, JournalStatsResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListJournalData, ListJournalErrors, ListJournalResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateJournalEntryData, UpdateJournalEntryErrors, UpdateJournalEntryResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses } from './types.gen';
+import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateJournalEntryData, CreateJournalEntryErrors, CreateJournalEntryResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, CreateStrategyData, CreateStrategyErrors, CreateStrategyResponses, DeleteJournalEntryData, DeleteJournalEntryErrors, DeleteJournalEntryResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, DeleteStrategyData, DeleteStrategyErrors, DeleteStrategyResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetCalendarData, GetCalendarErrors, GetCalendarResponses, GetJournalEntryData, GetJournalEntryErrors, GetJournalEntryResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, GetStrategyData, GetStrategyErrors, GetStrategyResponses, HealthData, HealthErrors, HealthResponses, JournalStatsData, JournalStatsErrors, JournalStatsResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListJournalData, ListJournalErrors, ListJournalResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, ListStrategiesData, ListStrategiesErrors, ListStrategiesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateJournalEntryData, UpdateJournalEntryErrors, UpdateJournalEntryResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses, UpdateStrategyData, UpdateStrategyErrors, UpdateStrategyResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -26,7 +26,8 @@ export const health = <ThrowOnError extends boolean = false>(options?: Options<H
 /**
  * Config
  *
- * Choices, defaults and limits for the scan form, plus the watchlist per source.
+ * Choices, defaults and limits for the scan form, the watchlist per source, and the
+ * strategy and condition catalogues.
  */
 export const config = <ThrowOnError extends boolean = false>(options?: Options<ConfigData, ThrowOnError>) => (options?.client ?? client).get<ConfigResponses, ConfigErrors, ThrowOnError>({ url: '/config', ...options });
 
@@ -38,7 +39,8 @@ export const config = <ThrowOnError extends boolean = false>(options?: Options<C
  * 503 when no symbol could be loaded at all (terminal down, bad login); otherwise the
  * per-symbol failures are listed next to the rows. With ``mtf`` each row carries ``htf_bias``;
  * ``require_htf_aligned`` (422 without ``mtf``) drops rows it does not confirm, and rows whose
- * higher timeframe is unknown are kept.
+ * higher timeframe is unknown are kept. ``strategy`` (422 when unknown) picks and scores the
+ * rows; the scan tuning stays this request's, and a strategy may turn ``mtf`` on, never off.
  */
 export const scan = <ThrowOnError extends boolean = false>(options?: Options<ScanData, ThrowOnError>) => (options?.client ?? client).get<ScanResponses, ScanErrors, ThrowOnError>({ url: '/scan', ...options });
 
@@ -56,6 +58,9 @@ export const scan = <ThrowOnError extends boolean = false>(options?: Options<Sca
  * analysed are served from the database even then, since they need no call. A budget refusal
  * comes when a call is needed: rows analysed before it stay in the database (read them from
  * ``GET /analyses``) but are not in the 429 body.
+ *
+ * ``strategy`` works as on ``/scan`` (422 when unknown, before the AI key is checked); the
+ * stored analyses record it and the AI is told its name and conditions.
  */
 export const analyse = <ThrowOnError extends boolean = false>(options: Options<AnalyseData, ThrowOnError>) => (options.client ?? client).post<AnalyseResponses, AnalyseErrors, ThrowOnError>({
     url: '/analyse',
@@ -228,3 +233,52 @@ export const updateJournalEntry = <ThrowOnError extends boolean = false>(options
  * returned as ``stale``, or an empty ``unavailable`` answer; the status is 200 either way.
  */
 export const getCalendar = <ThrowOnError extends boolean = false>(options: Options<GetCalendarData, ThrowOnError>) => (options.client ?? client).get<GetCalendarResponses, GetCalendarErrors, ThrowOnError>({ url: '/calendar', ...options });
+
+/**
+ * List Strategies
+ *
+ * Every strategy: the built-ins in a fixed order, then the stored ones by slug.
+ */
+export const listStrategies = <ThrowOnError extends boolean = false>(options?: Options<ListStrategiesData, ThrowOnError>) => (options?.client ?? client).get<ListStrategiesResponses, ListStrategiesErrors, ThrowOnError>({ url: '/strategies', ...options });
+
+/**
+ * Create Strategy
+ *
+ * Store a new strategy. Its slug must not be a built-in's or an existing one's (409).
+ */
+export const createStrategy = <ThrowOnError extends boolean = false>(options: Options<CreateStrategyData, ThrowOnError>) => (options.client ?? client).post<CreateStrategyResponses, CreateStrategyErrors, ThrowOnError>({
+    url: '/strategies',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Strategy
+ *
+ * Delete a stored strategy. Schedules that name it fall back to ``smc-default``.
+ */
+export const deleteStrategy = <ThrowOnError extends boolean = false>(options: Options<DeleteStrategyData, ThrowOnError>) => (options.client ?? client).delete<DeleteStrategyResponses, DeleteStrategyErrors, ThrowOnError>({ url: '/strategies/{slug}', ...options });
+
+/**
+ * Get Strategy
+ *
+ * One strategy, built-in or stored.
+ */
+export const getStrategy = <ThrowOnError extends boolean = false>(options: Options<GetStrategyData, ThrowOnError>) => (options.client ?? client).get<GetStrategyResponses, GetStrategyErrors, ThrowOnError>({ url: '/strategies/{slug}', ...options });
+
+/**
+ * Update Strategy
+ *
+ * Replace a stored strategy's definition. Built-ins cannot be changed (409).
+ */
+export const updateStrategy = <ThrowOnError extends boolean = false>(options: Options<UpdateStrategyData, ThrowOnError>) => (options.client ?? client).put<UpdateStrategyResponses, UpdateStrategyErrors, ThrowOnError>({
+    url: '/strategies/{slug}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

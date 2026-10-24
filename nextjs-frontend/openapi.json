@@ -73,7 +73,7 @@
           "scanner"
         ],
         "summary": "Config",
-        "description": "Choices, defaults and limits for the scan form, plus the watchlist per source.",
+        "description": "Choices, defaults and limits for the scan form, the watchlist per source, and the\nstrategy and condition catalogues.",
         "operationId": "config",
         "parameters": [
           {
@@ -153,7 +153,7 @@
           "scanner"
         ],
         "summary": "Scan",
-        "description": "Scan the given symbols (or the watchlist) on one timeframe.\n\n503 when no symbol could be loaded at all (terminal down, bad login); otherwise the\nper-symbol failures are listed next to the rows. With ``mtf`` each row carries ``htf_bias``;\n``require_htf_aligned`` (422 without ``mtf``) drops rows it does not confirm, and rows whose\nhigher timeframe is unknown are kept.",
+        "description": "Scan the given symbols (or the watchlist) on one timeframe.\n\n503 when no symbol could be loaded at all (terminal down, bad login); otherwise the\nper-symbol failures are listed next to the rows. With ``mtf`` each row carries ``htf_bias``;\n``require_htf_aligned`` (422 without ``mtf``) drops rows it does not confirm, and rows whose\nhigher timeframe is unknown are kept. ``strategy`` (422 when unknown) picks and scores the\nrows; the scan tuning stays this request's, and a strategy may turn ``mtf`` on, never off.",
         "operationId": "scan",
         "parameters": [
           {
@@ -278,6 +278,25 @@
             "description": "drop rows the higher timeframe does not confirm; needs mtf"
           },
           {
+            "name": "strategy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "strategy slug; default smc-default",
+              "title": "Strategy"
+            },
+            "description": "strategy slug; default smc-default"
+          },
+          {
             "name": "X-Internal-Key",
             "in": "header",
             "required": false,
@@ -316,7 +335,7 @@
             }
           },
           "422": {
-            "description": "Invalid parameters, e.g. require_htf_aligned without mtf",
+            "description": "Invalid parameters, e.g. require_htf_aligned without mtf, or an unknown strategy",
             "content": {
               "application/json": {
                 "schema": {
@@ -336,7 +355,7 @@
             }
           },
           "503": {
-            "description": "No symbol could be loaded",
+            "description": "Nothing loaded, or no strategy database",
             "content": {
               "application/json": {
                 "schema": {
@@ -372,7 +391,7 @@
           "analyses"
         ],
         "summary": "Analyse",
-        "description": "Scan, then ask the AI about the best hits; every row comes back with its AI result.\n\nThe scan runs under the scan lock, which is released before any provider call. The\nanalysis phase is serialised by its own lock, so concurrent identical runs queue and the\nsecond one finds the first one's verdicts instead of calling the provider again.\n\n429 when the daily AI budget is used up (``AI_MAX_CALLS_PER_DAY`` / ``AI_MAX_COST_PER_DAY``)\nor the endpoint is rate limited; ``Retry-After`` says when to try again. Hits already\nanalysed are served from the database even then, since they need no call. A budget refusal\ncomes when a call is needed: rows analysed before it stay in the database (read them from\n``GET /analyses``) but are not in the 429 body.",
+        "description": "Scan, then ask the AI about the best hits; every row comes back with its AI result.\n\nThe scan runs under the scan lock, which is released before any provider call. The\nanalysis phase is serialised by its own lock, so concurrent identical runs queue and the\nsecond one finds the first one's verdicts instead of calling the provider again.\n\n429 when the daily AI budget is used up (``AI_MAX_CALLS_PER_DAY`` / ``AI_MAX_COST_PER_DAY``)\nor the endpoint is rate limited; ``Retry-After`` says when to try again. Hits already\nanalysed are served from the database even then, since they need no call. A budget refusal\ncomes when a call is needed: rows analysed before it stay in the database (read them from\n``GET /analyses``) but are not in the 429 body.\n\n``strategy`` works as on ``/scan`` (422 when unknown, before the AI key is checked); the\nstored analyses record it and the AI is told its name and conditions.",
         "operationId": "analyse",
         "parameters": [
           {
@@ -424,7 +443,7 @@
             }
           },
           "422": {
-            "description": "Invalid request",
+            "description": "Invalid body, or an unknown strategy",
             "content": {
               "application/json": {
                 "schema": {
@@ -883,7 +902,7 @@
             }
           },
           "422": {
-            "description": "Invalid request",
+            "description": "Invalid schedule, or an unknown strategy",
             "content": {
               "application/json": {
                 "schema": {
@@ -1092,7 +1111,7 @@
             }
           },
           "422": {
-            "description": "Invalid request",
+            "description": "Invalid change, or an unknown strategy",
             "content": {
               "application/json": {
                 "schema": {
@@ -2455,6 +2474,593 @@
           }
         }
       }
+    },
+    "/strategies": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "List Strategies",
+        "description": "Every strategy: the built-ins in a fixed order, then the stored ones by slug.",
+        "operationId": "list_strategies",
+        "parameters": [
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Strategy database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many strategy requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "Create Strategy",
+        "description": "Store a new strategy. Its slug must not be a built-in's or an existing one's (409).",
+        "operationId": "create_strategy",
+        "parameters": [
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid strategy, e.g. an unknown condition or bad params",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Strategy database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Built-in strategy, slug taken, or the strategy limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many strategy requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/strategies/{slug}": {
+      "get": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "Get Strategy",
+        "description": "One strategy, built-in or stored.",
+        "operationId": "get_strategy",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Strategy database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No strategy with that slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many strategy requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "Update Strategy",
+        "description": "Replace a stored strategy's definition. Built-ins cannot be changed (409).",
+        "operationId": "update_strategy",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid strategy, e.g. an unknown condition or bad params",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Strategy database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No strategy with that slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many strategy requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Built-in strategy, slug taken, or the strategy limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "strategies"
+        ],
+        "summary": "Delete Strategy",
+        "description": "Delete a stored strategy. Schedules that name it fall back to ``smc-default``.",
+        "operationId": "delete_strategy",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Strategy database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No strategy with that slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many strategy requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Built-in strategy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2733,6 +3339,19 @@
             "type": "boolean",
             "title": "Require Htf Aligned",
             "default": false
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy",
+            "description": "default smc-default"
           }
         },
         "additionalProperties": false,
@@ -2761,6 +3380,12 @@
               "1d"
             ],
             "title": "Tf"
+          },
+          "strategy": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Strategy",
+            "default": "smc-default"
           },
           "count": {
             "type": "integer",
@@ -2879,6 +3504,20 @@
             ],
             "title": "Htf Bias"
           },
+          "strategy": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Strategy",
+            "default": "smc-default"
+          },
+          "conditions": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "maxProperties": 24,
+            "title": "Conditions"
+          },
           "ai": {
             "$ref": "#/components/schemas/AiResultOut"
           }
@@ -2991,6 +3630,12 @@
             "type": "array",
             "maxItems": 3,
             "title": "Timeframes Used"
+          },
+          "strategy": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Strategy",
+            "default": "smc-default"
           }
         },
         "type": "object",
@@ -3195,6 +3840,105 @@
         "title": "CalendarResponse",
         "description": "Upcoming events for one symbol's currencies, with the calendar's health and the\nrule-based ``immediate_risk``. The call succeeds even when the feed is down: see\n``calendar_status``."
       },
+      "ConditionInfoOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "params_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params Schema"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "params_schema"
+        ],
+        "title": "ConditionInfoOut",
+        "description": "One condition a strategy may name: its key, a label and the JSON schema of its params."
+      },
+      "ConditionRefIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,31}$",
+            "title": "Key"
+          },
+          "params": {
+            "patternProperties": {
+              "^[a-z][a-z0-9_]{0,31}$": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "maxLength": 32
+                  },
+                  {
+                    "type": "boolean"
+                  }
+                ]
+              }
+            },
+            "type": "object",
+            "maxProperties": 8,
+            "title": "Params"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "ConditionRefIn",
+        "description": "A condition named by registry key (see ``/config`` ``conditions``), with its params."
+      },
+      "ConditionRefOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "params"
+        ],
+        "title": "ConditionRefOut"
+      },
       "ConfigResponse": {
         "properties": {
           "sources": {
@@ -3246,6 +3990,20 @@
           "telegram_enabled": {
             "type": "boolean",
             "title": "Telegram Enabled"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/StrategySummary"
+            },
+            "type": "array",
+            "title": "Strategies"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionInfoOut"
+            },
+            "type": "array",
+            "title": "Conditions"
           }
         },
         "type": "object",
@@ -4211,6 +4969,12 @@
             ],
             "title": "Tf"
           },
+          "strategy": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Strategy",
+            "default": "smc-default"
+          },
           "count": {
             "type": "integer",
             "title": "Count"
@@ -4327,6 +5091,20 @@
               }
             ],
             "title": "Htf Bias"
+          },
+          "strategy": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Strategy",
+            "default": "smc-default"
+          },
+          "conditions": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "maxProperties": 24,
+            "title": "Conditions"
           }
         },
         "type": "object",
@@ -4447,6 +5225,12 @@
             "type": "boolean",
             "title": "Require Htf Aligned",
             "default": false
+          },
+          "strategy": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+            "title": "Strategy",
+            "default": "smc-default"
           }
         },
         "additionalProperties": false,
@@ -4562,6 +5346,11 @@
           "require_htf_aligned": {
             "type": "boolean",
             "title": "Require Htf Aligned"
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Strategy",
+            "default": "smc-default"
           },
           "last_run_at": {
             "anyOf": [
@@ -4700,12 +5489,379 @@
           "require_htf_aligned": {
             "type": "boolean",
             "title": "Require Htf Aligned"
+          },
+          "strategy": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+            "title": "Strategy"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "ScheduleUpdate",
         "description": "Any subset of the editable fields. Only ``telegram_chat_id`` may be null (it clears it)."
+      },
+      "StrategyCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 280,
+            "title": "Description",
+            "default": ""
+          },
+          "zone_kinds": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "FVG",
+                "OB"
+              ]
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Zone Kinds",
+            "default": [
+              "FVG",
+              "OB"
+            ]
+          },
+          "swing_length": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Swing Length",
+            "default": 10
+          },
+          "near_atr": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Near Atr",
+            "default": 0.5
+          },
+          "require": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionRefIn"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Require",
+            "default": []
+          },
+          "score": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionRefIn"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Score",
+            "default": []
+          },
+          "min_score": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "default": 0
+          },
+          "statuses": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "TOUCHING",
+                "NEAR"
+              ]
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Statuses",
+            "default": [
+              "TOUCHING",
+              "NEAR"
+            ]
+          },
+          "mtf": {
+            "type": "boolean",
+            "title": "Mtf",
+            "default": false
+          },
+          "require_htf_aligned": {
+            "type": "boolean",
+            "title": "Require Htf Aligned",
+            "default": false
+          },
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+            "title": "Slug"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "slug"
+        ],
+        "title": "StrategyCreate",
+        "description": "A new strategy, for ``POST /strategies``: a definition plus its unique ``slug``."
+      },
+      "StrategyList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StrategyOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "StrategyList"
+      },
+      "StrategyOut": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "zone_kinds": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "FVG",
+                "OB"
+              ]
+            },
+            "type": "array",
+            "title": "Zone Kinds"
+          },
+          "swing_length": {
+            "type": "integer",
+            "title": "Swing Length"
+          },
+          "near_atr": {
+            "type": "number",
+            "title": "Near Atr"
+          },
+          "require": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionRefOut"
+            },
+            "type": "array",
+            "title": "Require"
+          },
+          "score": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionRefOut"
+            },
+            "type": "array",
+            "title": "Score"
+          },
+          "min_score": {
+            "type": "integer",
+            "title": "Min Score"
+          },
+          "statuses": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "TOUCHING",
+                "NEAR"
+              ]
+            },
+            "type": "array",
+            "title": "Statuses"
+          },
+          "mtf": {
+            "type": "boolean",
+            "title": "Mtf"
+          },
+          "require_htf_aligned": {
+            "type": "boolean",
+            "title": "Require Htf Aligned"
+          },
+          "builtin": {
+            "type": "boolean",
+            "title": "Builtin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "zone_kinds",
+          "swing_length",
+          "near_atr",
+          "require",
+          "score",
+          "min_score",
+          "statuses",
+          "mtf",
+          "require_htf_aligned",
+          "builtin"
+        ],
+        "title": "StrategyOut",
+        "description": "A whole strategy. Built-ins (``builtin`` true) cannot be changed or deleted."
+      },
+      "StrategySummary": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "builtin": {
+            "type": "boolean",
+            "title": "Builtin"
+          },
+          "swing_length": {
+            "type": "integer",
+            "title": "Swing Length"
+          },
+          "near_atr": {
+            "type": "number",
+            "title": "Near Atr"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "builtin",
+          "swing_length",
+          "near_atr"
+        ],
+        "title": "StrategySummary",
+        "description": "What a strategy picker needs; ``swing_length`` / ``near_atr`` can prefill the scan form."
+      },
+      "StrategyUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 280,
+            "title": "Description",
+            "default": ""
+          },
+          "zone_kinds": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "FVG",
+                "OB"
+              ]
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Zone Kinds",
+            "default": [
+              "FVG",
+              "OB"
+            ]
+          },
+          "swing_length": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Swing Length",
+            "default": 10
+          },
+          "near_atr": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Near Atr",
+            "default": 0.5
+          },
+          "require": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionRefIn"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Require",
+            "default": []
+          },
+          "score": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionRefIn"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Score",
+            "default": []
+          },
+          "min_score": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "default": 0
+          },
+          "statuses": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "TOUCHING",
+                "NEAR"
+              ]
+            },
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Statuses",
+            "default": [
+              "TOUCHING",
+              "NEAR"
+            ]
+          },
+          "mtf": {
+            "type": "boolean",
+            "title": "Mtf",
+            "default": false
+          },
+          "require_htf_aligned": {
+            "type": "boolean",
+            "title": "Require Htf Aligned",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "StrategyUpdate",
+        "description": "A strategy's definition, for ``PUT /strategies/{slug}``. Defaults match ``smc-default``\nexcept that no condition is required or scored."
       },
       "TelegramTestRequest": {
         "properties": {

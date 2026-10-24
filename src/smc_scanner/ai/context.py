@@ -11,7 +11,7 @@ decimals come from the hit's latest price and are applied to every price in the 
 import json
 import math
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Final, Literal, NotRequired, SupportsFloat, TypedDict
 
 import pandas as pd
@@ -31,6 +31,7 @@ from smc_scanner.models import (
 )
 from smc_scanner.mtf import LastBos, MtfInputs, TimeframeView, row_direction
 from smc_scanner.scoring import is_aligned
+from smc_scanner.strategy.models import CONDITION_KEY_PATTERN, MAX_CONDITIONS, is_strategy_name
 
 MAX_CANDLES: Final[int] = 30
 MAX_SWINGS_PER_SIDE: Final[int] = 3
@@ -40,6 +41,7 @@ RATIO_DECIMALS: Final[int] = 3  # dist_atr is a ratio, not a price
 
 # Free text reaches the LLM only through these two fields, so both are restricted.
 _SYMBOL_PATTERN: Final = re.compile(r"[A-Za-z0-9._-]{1,32}")
+_MAX_STRATEGY_CONDITIONS: Final = 2 * MAX_CONDITIONS  # required plus scored
 _TIMEFRAME_PATTERN: Final = re.compile(r"[A-Za-z0-9]{1,8}")
 _REQUIRED_COLUMNS: Final[tuple[str, ...]] = ("time", "open", "high", "low", "close")
 
@@ -112,6 +114,14 @@ class TimeframesContext(TypedDict):
     lower: str | None
 
 
+class StrategyContext(TypedDict):
+    """The strategy that produced the hit: its name and which of its conditions held."""
+
+    name: str
+    conditions_met: list[str]
+    conditions_not_met: list[str]
+
+
 class ScanContext(TypedDict):
     symbol: str
     timeframe: str
@@ -133,6 +143,8 @@ class ScanContext(TypedDict):
     ltf: NotRequired[MtfBlockContext]
     # present only when the economic calendar had something trustworthy to say
     calendar: NotRequired[CalendarContext]
+    # the strategy's name and its conditions; never its free-text description
+    strategy: NotRequired[StrategyContext]
 
 
 def price_decimals(reference: float) -> int:
@@ -335,5 +347,33 @@ def with_calendar(context: ScanContext, block: CalendarContext) -> ScanContext:
     ``econ_calendar.prompt.calendar_block``). ``ContextTooLargeError`` if it does not fit."""
     extended = context.copy()
     extended["calendar"] = block
+    _check_size(extended)
+    return extended
+
+
+def strategy_block(name: str, conditions: Mapping[str, bool]) -> StrategyContext:
+    """The strategy block for a hit: ``name`` and the condition keys split by result, in order.
+    ValueError for a name outside the strategy alphabet or a key that is not key-shaped, so
+    nothing but those two kinds of bounded text can reach the prompt."""
+    # The strategy's own name rule keeps markup and control characters out. The name is still
+    # user-written, so the system prompt labels the block as data.
+    if not is_strategy_name(name):
+        raise ValueError("strategy name is not allowed in the prompt")
+    if len(conditions) > _MAX_STRATEGY_CONDITIONS:
+        raise ValueError("too many strategy conditions")
+    if not all(CONDITION_KEY_PATTERN.fullmatch(key) for key in conditions):
+        raise ValueError("strategy condition keys must be condition keys")
+    return StrategyContext(
+        name=name,
+        conditions_met=[key for key, passed in conditions.items() if passed],
+        conditions_not_met=[key for key, passed in conditions.items() if not passed],
+    )
+
+
+def with_strategy(context: ScanContext, block: StrategyContext) -> ScanContext:
+    """A copy of ``context`` with the strategy ``block`` (from ``strategy_block``).
+    ``ContextTooLargeError`` if it does not fit."""
+    extended = context.copy()
+    extended["strategy"] = block
     _check_size(extended)
     return extended

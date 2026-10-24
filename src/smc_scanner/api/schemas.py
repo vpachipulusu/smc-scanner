@@ -18,6 +18,7 @@ from smc_scanner.api.constants import (
     MAX_LABEL_CHARS,
     MAX_SYMBOLS,
 )
+from smc_scanner.api.strategy_schemas import ConditionInfoOut, StrategySlug, StrategySummary
 from smc_scanner.config import (
     DEFAULT_BARS,
     DEFAULT_NEAR_ATR,
@@ -31,6 +32,7 @@ from smc_scanner.config import (
     Timeframe,
 )
 from smc_scanner.models import Bias, ScanRow, Status
+from smc_scanner.strategy.models import DEFAULT_STRATEGY_SLUG, MAX_CONDITIONS
 
 MAX_TIMEFRAMES_USED = 3
 
@@ -78,6 +80,9 @@ class ScanRowOut(BaseModel):
     bar_time: str = Field(max_length=MAX_LABEL_CHARS)
     # Higher-timeframe bias, only with mtf; null when off or unknown. Not part of the score.
     htf_bias: Bias | None = None
+    # The strategy that selected the row, and every condition it evaluated (key -> passed).
+    strategy: str = Field(default=DEFAULT_STRATEGY_SLUG, max_length=MAX_LABEL_CHARS)
+    conditions: dict[str, bool] = Field(default_factory=dict, max_length=2 * MAX_CONDITIONS)
 
     @classmethod
     def from_row(cls, row: ScanRow, htf_bias: Bias | None = None) -> "ScanRowOut":
@@ -93,6 +98,8 @@ class ScanFailureOut(BaseModel):
 class ScanResponse(BaseModel):
     source: ApiSource
     tf: Timeframe
+    # The slug the scan ran with. Defaults keep the field optional in the generated client.
+    strategy: str = Field(default=DEFAULT_STRATEGY_SLUG, max_length=MAX_LABEL_CHARS)
     count: int
     rows: list[ScanRowOut]
     failures: list[ScanFailureOut]
@@ -135,6 +142,7 @@ class AnalyseRequest(BaseModel):
     max_rows: int = Field(default=DEFAULT_MAX_ROWS, ge=1, le=MAX_AI_ROWS)
     mtf: bool = False
     require_htf_aligned: bool = False
+    strategy: StrategySlug | None = Field(default=None, description="default smc-default")
 
     @model_validator(mode="after")
     def _require_needs_mtf(self) -> "AnalyseRequest":
@@ -146,6 +154,8 @@ class AnalyseRequest(BaseModel):
 class AnalyseResponse(BaseModel):
     source: ApiSource
     tf: Timeframe
+    # The slug the scan ran with. Defaults keep the field optional in the generated client.
+    strategy: str = Field(default=DEFAULT_STRATEGY_SLUG, max_length=MAX_LABEL_CHARS)
     count: int
     rows: list[AnalysedRowOut]
     failures: list[ScanFailureOut]
@@ -171,6 +181,8 @@ class AnalysisOut(BaseModel):
     verdict: AiVerdict | None
     # The scan timeframe first, then the higher and lower ones whose data the AI was given.
     timeframes_used: list[str] = Field(max_length=MAX_TIMEFRAMES_USED)
+    # smc-default for analyses made before strategies
+    strategy: str = Field(default=DEFAULT_STRATEGY_SLUG, max_length=MAX_LABEL_CHARS)
 
 
 class AnalysisPage(BaseModel):
@@ -204,3 +216,7 @@ class ConfigResponse(BaseModel):
     watchlist: dict[str, list[str]]
     ai_enabled: bool  # an AI provider key is set; only the flag, never the key or its name
     telegram_enabled: bool  # a Telegram bot token is set; only the flag
+    # Built-ins first (built-ins only when the store is down), and every condition a strategy
+    # may name. Defaults keep both optional in the generated client; the route always fills them.
+    strategies: list[StrategySummary] = Field(default_factory=list)
+    conditions: list[ConditionInfoOut] = Field(default_factory=list)

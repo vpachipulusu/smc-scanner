@@ -136,8 +136,10 @@ def analyse_for_cli(
     options: ScanOptions,
     timeframe: str,
     settings: AiSettings,
+    strategy_name: str | None = None,
 ) -> list[AiCells]:
-    """One AI cell set per row, in order. Never raises; problems become notes and a log line."""
+    """One AI cell set per row, in order. Never raises; problems become notes and a log line.
+    ``strategy_name`` names the rows' strategy to the AI (their slug when None)."""
     if not rows:
         return []
     if settings.provider == DEMO_PROVIDER and not settings.demo:
@@ -166,6 +168,7 @@ def analyse_for_cli(
             timeframe=timeframe,
             min_score=settings.min_score,
             max_rows=settings.max_rows,
+            strategy_name=strategy_name,
         )
     except AiError as exc:
         log.error("AI analysis failed: %s", exc)

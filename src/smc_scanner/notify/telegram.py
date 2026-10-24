@@ -236,12 +236,15 @@ def format_verdict_message(
     link: str | None = None,
     *,
     zone: tuple[float, float] | None = None,
+    strategy: str | None = None,
 ) -> str:
-    """Render a verdict as Telegram HTML, at most 4096 chars, advisory line always last."""
+    """Render a verdict as Telegram HTML, at most 4096 chars, advisory line always last.
+    ``strategy`` (a user-written name, escaped) adds a line naming the strategy."""
     quality = f" | Quality {_esc(verdict.quality)}" if verdict.quality else ""
     lines = [
         f"<b>{_esc(verdict.action)}</b> {_esc(symbol)} {_esc(tf)}",
         f"Confidence: {verdict.confidence:.0f}%{quality}",
+        *([f"Strategy: {_esc(strategy)}"] if strategy else []),
         *_verdict_lines(verdict, zone),
     ]
     safe = _safe_link(link)

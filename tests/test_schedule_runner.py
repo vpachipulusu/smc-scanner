@@ -29,6 +29,7 @@ from smc_scanner.schedule.rules import SKIP_HOLD, SKIP_LOW_CONFIDENCE, SKIP_UNCH
 from smc_scanner.schedule.runner import RunDeps, RunGuard, ScanData, default_analyse, run_schedule
 from smc_scanner.schedule.store import AlertKey, Schedule, SqliteScheduleRepository
 from smc_scanner.schedule.timing import GRACE, next_run_after
+from smc_scanner.strategy import Strategy
 
 
 def test_delivers_a_signal_and_schedules_the_next_run(tmp_path: Path) -> None:
@@ -80,7 +81,7 @@ def test_a_new_bar_is_sent_again(tmp_path: Path) -> None:
 
 
 def deps_with_rows(deps: RunDeps, rows: list[ScanRow]) -> RunDeps:
-    def scan(_: Schedule) -> ScanData:
+    def scan(_: Schedule, __: Strategy) -> ScanData:
         return ScanData(rows=tuple(rows), frames={}, options=ScanOptions())
 
     return replace(deps, scan=scan)
@@ -390,7 +391,7 @@ def test_default_analyse_saves_once_and_a_rerun_sends_nothing(tmp_path: Path) ->
     rows = tuple(scan_instrument("EURUSD", OHLC, OPTIONS))
     assert rows
 
-    def scan(_: Schedule) -> ScanData:
+    def scan(_: Schedule, __: Strategy) -> ScanData:
         return ScanData(rows=rows, frames={"EURUSD": OHLC}, options=OPTIONS)
 
     real = replace(

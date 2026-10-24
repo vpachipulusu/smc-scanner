@@ -31,6 +31,7 @@ from smc_scanner.api.constants import (
 from smc_scanner.api.deps import (
     InternalKeyDep,
     RunDepsFactoryDep,
+    StrategyServiceDep,
     TelegramSenderDep,
     _existing,
     _open_job_log,
@@ -52,6 +53,7 @@ from smc_scanner.api.schedule_schemas import (
     TelegramTestResponse,
 )
 from smc_scanner.api.schemas import ErrorResponse
+from smc_scanner.api.strategy_deps import resolve_strategy
 from smc_scanner.schedule.runner import (
     TOKEN_ENV as TELEGRAM_TOKEN_ENV,
 )
@@ -130,10 +132,14 @@ def list_schedules(_: InternalKeyDep) -> ScheduleList:
     tags=["schedules"],
     responses={
         409: {"model": ErrorResponse, "description": "The schedule limit is reached"},
+        422: {"model": ErrorResponse, "description": "Invalid schedule, or an unknown strategy"},
         **STORE_ERROR_ONLY,
     },
 )
-def create_schedule(body: ScheduleCreate, _: InternalKeyDep) -> ScheduleOut:
+def create_schedule(
+    body: ScheduleCreate, _: InternalKeyDep, strategies: StrategyServiceDep
+) -> ScheduleOut:
+    resolve_strategy(strategies, body.strategy)  # 422 for a slug no strategy has
     try:
         schedule = Schedule(**{**body.model_dump(), "symbols": tuple(body.symbols)})
     except ValueError as exc:  # e.g. a blank name the field limits cannot see
@@ -157,10 +163,16 @@ def get_schedule(schedule_id: ScheduleId, _: InternalKeyDep) -> ScheduleOut:
     "/schedules/{schedule_id}",
     response_model=ScheduleOut,
     tags=["schedules"],
-    responses=SCHEDULE_ERRORS,
+    responses={
+        **SCHEDULE_ERRORS,
+        422: {"model": ErrorResponse, "description": "Invalid change, or an unknown strategy"},
+    },
 )
 def update_schedule(
-    schedule_id: ScheduleId, body: ScheduleUpdate, _: InternalKeyDep
+    schedule_id: ScheduleId,
+    body: ScheduleUpdate,
+    _: InternalKeyDep,
+    strategies: StrategyServiceDep,
 ) -> ScheduleOut:
     """Change some fields. Changing the frequency or the enabled flag picks a fresh next slot."""
     repo = _open_schedules()
@@ -169,6 +181,8 @@ def update_schedule(
         changes["symbols"] = tuple(changes["symbols"])
     with _schedule_update_lock:  # read-merge-write must not interleave with another PATCH
         current = _existing(repo, schedule_id)
+        if "strategy" in changes:
+            resolve_strategy(strategies, body.strategy)  # 422 for a slug no strategy has
         try:
             merged = replace(current, **changes)  # re-runs the Schedule validation
         except ValueError as exc:

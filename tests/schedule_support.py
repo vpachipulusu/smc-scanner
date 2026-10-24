@@ -14,6 +14,7 @@ from smc_scanner.notify.telegram import SendResult
 from smc_scanner.scanner import ScanOptions
 from smc_scanner.schedule.runner import RunDeps, RunGuard, ScanData
 from smc_scanner.schedule.store import Schedule, SqliteScheduleRepository
+from smc_scanner.strategy import Strategy
 
 T0 = datetime(2026, 3, 1, 12, 0, 30, tzinfo=UTC)
 BAR = "2026-03-01 11:00:00"
@@ -118,7 +119,7 @@ def build_deps(
     scanned = rows if rows is not None else [make_row(symbol) for symbol in scripted]
     prior = previous or {}
 
-    def scan(schedule: Schedule) -> ScanData:
+    def scan(schedule: Schedule, strategy: Strategy) -> ScanData:
         rec.scans += 1
         rec.locked_during_scan.append(lock.locked())
         if callable(scan_hook):

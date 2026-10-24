@@ -19,6 +19,7 @@ from smc_scanner.strategy.engine import (
     run_scan_with_strategy,
     scan_instrument_with_strategy,
     scan_watchlist_with_strategy,
+    uses_mtf,
 )
 from smc_scanner.strategy.models import (
     CONDITION_KEY_PATTERN,
@@ -59,4 +60,5 @@ __all__ = [
     "run_scan_with_strategy",
     "scan_instrument_with_strategy",
     "scan_watchlist_with_strategy",
+    "uses_mtf",
 ]

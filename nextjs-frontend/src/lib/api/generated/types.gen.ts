@@ -135,6 +135,12 @@ export type AnalyseRequest = {
      * Require Htf Aligned
      */
     require_htf_aligned?: boolean;
+    /**
+     * Strategy
+     *
+     * default smc-default
+     */
+    strategy?: string | null;
 };
 
 /**
@@ -149,6 +155,10 @@ export type AnalyseResponse = {
      * Tf
      */
     tf: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Strategy
+     */
+    strategy?: string;
     /**
      * Count
      */
@@ -234,6 +244,16 @@ export type AnalysedRowOut = {
      * Htf Bias
      */
     htf_bias?: 'bullish' | 'bearish' | 'range' | null;
+    /**
+     * Strategy
+     */
+    strategy?: string;
+    /**
+     * Conditions
+     */
+    conditions?: {
+        [key: string]: boolean;
+    };
     ai: AiResultOut;
 };
 
@@ -304,6 +324,10 @@ export type AnalysisOut = {
      * Timeframes Used
      */
     timeframes_used: Array<string>;
+    /**
+     * Strategy
+     */
+    strategy?: string;
 };
 
 /**
@@ -417,6 +441,62 @@ export type CalendarResponse = {
 };
 
 /**
+ * ConditionInfoOut
+ *
+ * One condition a strategy may name: its key, a label and the JSON schema of its params.
+ */
+export type ConditionInfoOut = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Params Schema
+     */
+    params_schema: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * ConditionRefIn
+ *
+ * A condition named by registry key (see ``/config`` ``conditions``), with its params.
+ */
+export type ConditionRefIn = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Params
+     */
+    params?: {
+        [key: string]: unknown | number | number | string | boolean;
+    };
+};
+
+/**
+ * ConditionRefOut
+ */
+export type ConditionRefOut = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Params
+     */
+    params: {
+        [key: string]: number | number | string | boolean;
+    };
+};
+
+/**
  * ConfigResponse
  *
  * What the scan form needs: choices, defaults, limits and the watchlist per source.
@@ -446,6 +526,14 @@ export type ConfigResponse = {
      * Telegram Enabled
      */
     telegram_enabled: boolean;
+    /**
+     * Strategies
+     */
+    strategies?: Array<StrategySummary>;
+    /**
+     * Conditions
+     */
+    conditions?: Array<ConditionInfoOut>;
 };
 
 /**
@@ -962,6 +1050,10 @@ export type ScanResponse = {
      */
     tf: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
     /**
+     * Strategy
+     */
+    strategy?: string;
+    /**
      * Count
      */
     count: number;
@@ -1043,6 +1135,16 @@ export type ScanRowOut = {
      * Htf Bias
      */
     htf_bias?: 'bullish' | 'bearish' | 'range' | null;
+    /**
+     * Strategy
+     */
+    strategy?: string;
+    /**
+     * Conditions
+     */
+    conditions?: {
+        [key: string]: boolean;
+    };
 };
 
 /**
@@ -1103,6 +1205,10 @@ export type ScheduleCreate = {
      * Require Htf Aligned
      */
     require_htf_aligned?: boolean;
+    /**
+     * Strategy
+     */
+    strategy?: string;
 };
 
 /**
@@ -1176,6 +1282,10 @@ export type ScheduleOut = {
      */
     require_htf_aligned: boolean;
     /**
+     * Strategy
+     */
+    strategy?: string;
+    /**
      * Last Run At
      */
     last_run_at: string | null;
@@ -1235,6 +1345,217 @@ export type ScheduleUpdate = {
      * Telegram Chat Id
      */
     telegram_chat_id?: string | null;
+    /**
+     * Mtf
+     */
+    mtf?: boolean;
+    /**
+     * Require Htf Aligned
+     */
+    require_htf_aligned?: boolean;
+    /**
+     * Strategy
+     */
+    strategy?: string;
+};
+
+/**
+ * StrategyCreate
+ *
+ * A new strategy, for ``POST /strategies``: a definition plus its unique ``slug``.
+ */
+export type StrategyCreate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * Zone Kinds
+     */
+    zone_kinds?: Array<'FVG' | 'OB'>;
+    /**
+     * Swing Length
+     */
+    swing_length?: number;
+    /**
+     * Near Atr
+     */
+    near_atr?: number;
+    /**
+     * Require
+     */
+    require?: Array<ConditionRefIn>;
+    /**
+     * Score
+     */
+    score?: Array<ConditionRefIn>;
+    /**
+     * Min Score
+     */
+    min_score?: number;
+    /**
+     * Statuses
+     */
+    statuses?: Array<'TOUCHING' | 'NEAR'>;
+    /**
+     * Mtf
+     */
+    mtf?: boolean;
+    /**
+     * Require Htf Aligned
+     */
+    require_htf_aligned?: boolean;
+    /**
+     * Slug
+     */
+    slug: string;
+};
+
+/**
+ * StrategyList
+ */
+export type StrategyList = {
+    /**
+     * Items
+     */
+    items: Array<StrategyOut>;
+};
+
+/**
+ * StrategyOut
+ *
+ * A whole strategy. Built-ins (``builtin`` true) cannot be changed or deleted.
+ */
+export type StrategyOut = {
+    /**
+     * Slug
+     */
+    slug: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Zone Kinds
+     */
+    zone_kinds: Array<'FVG' | 'OB'>;
+    /**
+     * Swing Length
+     */
+    swing_length: number;
+    /**
+     * Near Atr
+     */
+    near_atr: number;
+    /**
+     * Require
+     */
+    require: Array<ConditionRefOut>;
+    /**
+     * Score
+     */
+    score: Array<ConditionRefOut>;
+    /**
+     * Min Score
+     */
+    min_score: number;
+    /**
+     * Statuses
+     */
+    statuses: Array<'TOUCHING' | 'NEAR'>;
+    /**
+     * Mtf
+     */
+    mtf: boolean;
+    /**
+     * Require Htf Aligned
+     */
+    require_htf_aligned: boolean;
+    /**
+     * Builtin
+     */
+    builtin: boolean;
+};
+
+/**
+ * StrategySummary
+ *
+ * What a strategy picker needs; ``swing_length`` / ``near_atr`` can prefill the scan form.
+ */
+export type StrategySummary = {
+    /**
+     * Slug
+     */
+    slug: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Builtin
+     */
+    builtin: boolean;
+    /**
+     * Swing Length
+     */
+    swing_length: number;
+    /**
+     * Near Atr
+     */
+    near_atr: number;
+};
+
+/**
+ * StrategyUpdate
+ *
+ * A strategy's definition, for ``PUT /strategies/{slug}``. Defaults match ``smc-default``
+ * except that no condition is required or scored.
+ */
+export type StrategyUpdate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * Zone Kinds
+     */
+    zone_kinds?: Array<'FVG' | 'OB'>;
+    /**
+     * Swing Length
+     */
+    swing_length?: number;
+    /**
+     * Near Atr
+     */
+    near_atr?: number;
+    /**
+     * Require
+     */
+    require?: Array<ConditionRefIn>;
+    /**
+     * Score
+     */
+    score?: Array<ConditionRefIn>;
+    /**
+     * Min Score
+     */
+    min_score?: number;
+    /**
+     * Statuses
+     */
+    statuses?: Array<'TOUCHING' | 'NEAR'>;
     /**
      * Mtf
      */
@@ -1399,6 +1720,12 @@ export type ScanData = {
          * drop rows the higher timeframe does not confirm; needs mtf
          */
         require_htf_aligned?: boolean;
+        /**
+         * Strategy
+         *
+         * strategy slug; default smc-default
+         */
+        strategy?: string | null;
     };
     url: '/scan';
 };
@@ -1409,7 +1736,7 @@ export type ScanErrors = {
      */
     401: ErrorResponse;
     /**
-     * Invalid parameters, e.g. require_htf_aligned without mtf
+     * Invalid parameters, e.g. require_htf_aligned without mtf, or an unknown strategy
      */
     422: ErrorResponse;
     /**
@@ -1421,7 +1748,7 @@ export type ScanErrors = {
      */
     500: ErrorResponse;
     /**
-     * No symbol could be loaded
+     * Nothing loaded, or no strategy database
      */
     503: ErrorResponse;
 };
@@ -1456,7 +1783,7 @@ export type AnalyseErrors = {
      */
     401: ErrorResponse;
     /**
-     * Invalid request
+     * Invalid body, or an unknown strategy
      */
     422: ErrorResponse;
     /**
@@ -1670,7 +1997,7 @@ export type CreateScheduleErrors = {
      */
     409: ErrorResponse;
     /**
-     * Invalid request
+     * Invalid schedule, or an unknown strategy
      */
     422: ErrorResponse;
     /**
@@ -1826,7 +2153,7 @@ export type UpdateScheduleErrors = {
      */
     404: ErrorResponse;
     /**
-     * Invalid request
+     * Invalid change, or an unknown strategy
      */
     422: ErrorResponse;
     /**
@@ -2410,3 +2737,277 @@ export type GetCalendarResponses = {
 };
 
 export type GetCalendarResponse = GetCalendarResponses[keyof GetCalendarResponses];
+
+export type ListStrategiesData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/strategies';
+};
+
+export type ListStrategiesErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many strategy requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Strategy database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListStrategiesError = ListStrategiesErrors[keyof ListStrategiesErrors];
+
+export type ListStrategiesResponses = {
+    /**
+     * Successful Response
+     */
+    200: StrategyList;
+};
+
+export type ListStrategiesResponse = ListStrategiesResponses[keyof ListStrategiesResponses];
+
+export type CreateStrategyData = {
+    body: StrategyCreate;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/strategies';
+};
+
+export type CreateStrategyErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Built-in strategy, slug taken, or the strategy limit reached
+     */
+    409: ErrorResponse;
+    /**
+     * Invalid strategy, e.g. an unknown condition or bad params
+     */
+    422: ErrorResponse;
+    /**
+     * Too many strategy requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Strategy database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type CreateStrategyError = CreateStrategyErrors[keyof CreateStrategyErrors];
+
+export type CreateStrategyResponses = {
+    /**
+     * Successful Response
+     */
+    201: StrategyOut;
+};
+
+export type CreateStrategyResponse = CreateStrategyResponses[keyof CreateStrategyResponses];
+
+export type DeleteStrategyData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/strategies/{slug}';
+};
+
+export type DeleteStrategyErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No strategy with that slug
+     */
+    404: ErrorResponse;
+    /**
+     * Built-in strategy
+     */
+    409: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many strategy requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Strategy database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type DeleteStrategyError = DeleteStrategyErrors[keyof DeleteStrategyErrors];
+
+export type DeleteStrategyResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteStrategyResponse = DeleteStrategyResponses[keyof DeleteStrategyResponses];
+
+export type GetStrategyData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/strategies/{slug}';
+};
+
+export type GetStrategyErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No strategy with that slug
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many strategy requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Strategy database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type GetStrategyError = GetStrategyErrors[keyof GetStrategyErrors];
+
+export type GetStrategyResponses = {
+    /**
+     * Successful Response
+     */
+    200: StrategyOut;
+};
+
+export type GetStrategyResponse = GetStrategyResponses[keyof GetStrategyResponses];
+
+export type UpdateStrategyData = {
+    body: StrategyUpdate;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/strategies/{slug}';
+};
+
+export type UpdateStrategyErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No strategy with that slug
+     */
+    404: ErrorResponse;
+    /**
+     * Built-in strategy, slug taken, or the strategy limit reached
+     */
+    409: ErrorResponse;
+    /**
+     * Invalid strategy, e.g. an unknown condition or bad params
+     */
+    422: ErrorResponse;
+    /**
+     * Too many strategy requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Strategy database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type UpdateStrategyError = UpdateStrategyErrors[keyof UpdateStrategyErrors];
+
+export type UpdateStrategyResponses = {
+    /**
+     * Successful Response
+     */
+    200: StrategyOut;
+};
+
+export type UpdateStrategyResponse = UpdateStrategyResponses[keyof UpdateStrategyResponses];

@@ -50,6 +50,12 @@ def _plan(strategy: Strategy) -> _Plan:
     )
 
 
+def uses_mtf(strategy: Strategy) -> bool:
+    """Whether scanning with ``strategy`` loads the higher timeframe whatever the caller asks:
+    its own ``mtf`` flag, or an ``htf_aligned`` condition (which would pass every zone without)."""
+    return strategy.mtf or _HTF_KEY in strategy.condition_keys()
+
+
 def _scan_options(strategy: Strategy, options: ScanOptions | None) -> ScanOptions:
     return options if options is not None else strategy.to_scan_options()
 
@@ -145,7 +151,7 @@ def scan_watchlist_with_strategy(
         timeframe,
         bars,
         scan_options,
-        mtf=mtf or chosen.mtf or plan.needs_htf,
+        mtf=mtf or uses_mtf(chosen),
         require_htf_aligned=require_htf_aligned or chosen.require_htf_aligned,
         ltf_min_score=ltf_min_score,
         ltf_max_rows=ltf_max_rows,

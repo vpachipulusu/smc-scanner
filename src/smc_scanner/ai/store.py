@@ -56,33 +56,45 @@ CREATE TABLE IF NOT EXISTS analyses (
     UNIQUE (symbol, tf, zone_kind, zone_low, zone_high, bar_time)
 )
 """
-_COLUMNS: Final = (
+# Added after the first release, nullable (NULL: written before strategies, i.e. smc-default).
+# Like ``schedule.store``'s columns it is added when missing, without a ``user_version`` bump.
+_STRATEGY_COLUMN: Final = "strategy"
+_BASE_COLUMNS: Final = (
     "id, created_at, symbol, tf, zone_kind, zone_low, zone_high, bar_time, zone, context, "
     "verdict, provider, model, prompt_version, tokens_in, tokens_out, cost_estimate, error, "
     "attempts"
 )
+_COLUMNS: Final = f"{_BASE_COLUMNS}, {_STRATEGY_COLUMN}"
+# What a read-only store selects from a file no writer has migrated yet.
+_LEGACY_COLUMNS: Final = f"{_BASE_COLUMNS}, NULL"
 _UPSERT: Final = """
 INSERT INTO analyses (
     created_at, symbol, tf, zone_kind, zone_low, zone_high, bar_time, zone, context, verdict,
-    provider, model, prompt_version, tokens_in, tokens_out, cost_estimate, error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    provider, model, prompt_version, tokens_in, tokens_out, cost_estimate, error, strategy
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (symbol, tf, zone_kind, zone_low, zone_high, bar_time) DO UPDATE SET
     created_at = excluded.created_at, zone = excluded.zone, context = excluded.context,
     verdict = excluded.verdict, provider = excluded.provider, model = excluded.model,
     prompt_version = excluded.prompt_version, tokens_in = excluded.tokens_in,
-    tokens_out = excluded.tokens_out,
+    tokens_out = excluded.tokens_out, strategy = excluded.strategy,
     cost_estimate = CASE WHEN analyses.cost_estimate IS NULL AND excluded.cost_estimate IS NULL
         THEN NULL
         ELSE COALESCE(analyses.cost_estimate, 0) + COALESCE(excluded.cost_estimate, 0) END,
     error = excluded.error, attempts = analyses.attempts + 1
 WHERE ? OR analyses.error IS NOT NULL
 """
-_SELECT_ONE: Final = f"""
-SELECT {_COLUMNS} FROM analyses
+# The read statements take the column list as ``{columns}``: ``_COLUMNS``, or ``_LEGACY_COLUMNS``
+# for a read-only store over an unmigrated file. Both are constants, never input.
+#
+# The dedupe key leaves the strategy out on purpose, like the prompt version: a verdict is about
+# the zone on that bar, so a second strategy that finds the same hit reuses it (and the row keeps
+# the strategy that first analysed it) unless the caller forces a re-run.
+_SELECT_ONE: Final = """
+SELECT {columns} FROM analyses
 WHERE symbol = ? AND tf = ? AND zone_kind = ? AND zone_low = ? AND zone_high = ? AND bar_time = ?
 """
-_SELECT_RECENT: Final = f"SELECT {_COLUMNS} FROM analyses ORDER BY created_at DESC, id DESC LIMIT ?"
-_SELECT_BY_ID: Final = f"SELECT {_COLUMNS} FROM analyses WHERE id = ?"
+_SELECT_RECENT: Final = "SELECT {columns} FROM analyses ORDER BY created_at DESC, id DESC LIMIT ?"
+_SELECT_BY_ID: Final = "SELECT {columns} FROM analyses WHERE id = ?"
 _SELECT_USAGE: Final = (
     "SELECT COALESCE(SUM(attempts), 0), COALESCE(SUM(cost_estimate), 0.0) FROM analyses "
     "WHERE created_at >= ? AND created_at < ?"
@@ -91,8 +103,8 @@ _INDEX_CREATED: Final = "CREATE INDEX IF NOT EXISTS analyses_created_at ON analy
 # Optional filters are bound as NULL when unused, so the statement text never changes. The
 # verdict JSON is read with json_extract; a failed attempt (verdict NULL) never matches a
 # verdict filter. Keyset paging on the primary key: newest first, ``id < before_id``.
-_SELECT_FILTERED: Final = f"""
-SELECT {_COLUMNS} FROM analyses
+_SELECT_FILTERED: Final = """
+SELECT {columns} FROM analyses
 WHERE (? IS NULL OR symbol = ?)
   AND (? IS NULL OR json_extract(verdict, '$.action') = ?)
   AND (? IS NULL OR json_extract(verdict, '$.confidence') >= ?)
@@ -165,6 +177,7 @@ class AnalysisRecord:
     error: str | None
     id: int | None = None
     attempts: int = 1
+    strategy: str | None = None  # slug of the strategy whose row was analysed; None: before them
 
 
 class AnalysisStore(Protocol):
@@ -255,6 +268,7 @@ def _to_record(row: tuple[Any, ...]) -> AnalysisRecord:
         cost_estimate,
         error,
         attempts,
+        strategy,
     ) = row
     return AnalysisRecord(
         key=AnalysisKey(symbol, tf, zone_kind, zone_low, zone_high, bar_time),
@@ -271,7 +285,23 @@ def _to_record(row: tuple[Any, ...]) -> AnalysisRecord:
         error=error,
         id=row_id,
         attempts=attempts,
+        strategy=strategy,
     )
+
+
+def _has_strategy_column(conn: sqlite3.Connection) -> bool:
+    return any(row[1] == _STRATEGY_COLUMN for row in conn.execute("PRAGMA table_info(analyses)"))
+
+
+def _add_strategy_column(conn: sqlite3.Connection) -> None:
+    """Idempotent, and safe against another process adding it first."""
+    if _has_strategy_column(conn):
+        return
+    try:
+        conn.execute(f"ALTER TABLE analyses ADD COLUMN {_STRATEGY_COLUMN} TEXT")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" not in str(exc):
+            raise
 
 
 class SqliteAnalysisStore:
@@ -318,6 +348,7 @@ class SqliteAnalysisStore:
             if "attempts" not in columns:
                 conn.execute("ALTER TABLE analyses ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1")
             conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        _add_strategy_column(conn)
         conn.execute(_INDEX_CREATED)  # idempotent, so no schema version bump; speeds the day sum
 
     @contextmanager
@@ -334,10 +365,16 @@ class SqliteAnalysisStore:
         except sqlite3.Error as exc:
             raise StoreError(f"analysis database {self._path}: {exc}") from exc
 
+    def _sql(self, conn: sqlite3.Connection, template: str) -> str:
+        """``template`` with its column list. A writer migrated the file when it opened it; a
+        reader may face a file no writer has opened since the column was added."""
+        legacy = self._read_only and not _has_strategy_column(conn)
+        return template.replace("{columns}", _LEGACY_COLUMNS if legacy else _COLUMNS)
+
     def get(self, key: AnalysisKey) -> AnalysisRecord | None:
         params = (key.symbol, key.tf, key.zone_kind, key.zone_low, key.zone_high, key.bar_time)
         with self._connect() as conn:
-            row = conn.execute(_SELECT_ONE, params).fetchone()
+            row = conn.execute(self._sql(conn, _SELECT_ONE), params).fetchone()
         return None if row is None else _to_record(row)
 
     def save(self, record: AnalysisRecord, *, overwrite: bool = False) -> None:
@@ -360,6 +397,7 @@ class SqliteAnalysisStore:
             record.tokens_out,
             record.cost_estimate,
             record.error,
+            record.strategy,
             int(overwrite),
         )
         with self._connect() as conn:
@@ -387,12 +425,12 @@ class SqliteAnalysisStore:
             raise ValueError("limit must be at least 1")
         limit = min(limit, MAX_LIST_LIMIT)
         with self._connect() as conn:
-            rows = conn.execute(_SELECT_RECENT, (limit,)).fetchall()
+            rows = conn.execute(self._sql(conn, _SELECT_RECENT), (limit,)).fetchall()
         return [_to_record(row) for row in rows]
 
     def get_by_id(self, record_id: int) -> AnalysisRecord | None:
         with self._connect() as conn:
-            row = conn.execute(_SELECT_BY_ID, (record_id,)).fetchone()
+            row = conn.execute(self._sql(conn, _SELECT_BY_ID), (record_id,)).fetchone()
         return None if row is None else _to_record(row)
 
     def list_filtered(
@@ -418,5 +456,5 @@ class SqliteAnalysisStore:
             min(limit, MAX_LIST_LIMIT),
         )
         with self._connect() as conn:
-            rows = conn.execute(_SELECT_FILTERED, params).fetchall()
+            rows = conn.execute(self._sql(conn, _SELECT_FILTERED), params).fetchall()
         return [_to_record(row) for row in rows]

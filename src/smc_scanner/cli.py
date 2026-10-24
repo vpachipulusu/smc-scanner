@@ -3,6 +3,7 @@
 import argparse
 import logging
 import math
+import os
 import sys
 import time
 from collections.abc import Sequence
@@ -11,6 +12,7 @@ from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 from rich.console import Console
 
+from smc_scanner.ai.store import DB_PATH_ENV, StoreError, db_path_from_env
 from smc_scanner.ai_cli import PROVIDER_CHOICES, AiSettings, FrameCache, analyse_for_cli
 from smc_scanner.config import (
     DEFAULT_BARS,
@@ -28,7 +30,13 @@ from smc_scanner.config import (
 )
 from smc_scanner.loaders import LoaderError, make_loader
 from smc_scanner.report import AiCells, render_table, write_csv
-from smc_scanner.scanner import ScanOptions, ScanResult, run_scan
+from smc_scanner.scanner import ScanOptions, ScanResult
+from smc_scanner.strategy import DEFAULT_STRATEGY_SLUG, SLUG_PATTERN, Strategy
+from smc_scanner.strategy.builtin import BUILTIN_STRATEGIES, builtin_copy
+from smc_scanner.strategy.conditions import ConditionError, resolve_all
+from smc_scanner.strategy.engine import run_scan_with_strategy
+from smc_scanner.strategy.service import StrategyService
+from smc_scanner.strategy.store import SqliteStrategyRepository, StrategyNotFoundError
 from smc_scanner.watchlist import DEFAULT_WATCHLIST, WatchlistError
 from smc_scanner.watchlist import resolve_symbols as watchlist_symbols
 
@@ -58,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--swing", type=int, default=DEFAULT_SWING_LENGTH)
     parser.add_argument("--near", type=float, default=DEFAULT_NEAR_ATR, help="NEAR limit in ATR")
     parser.add_argument("--all-touches", action="store_true", help="include zones touched before")
+    parser.add_argument(
+        "--strategy",
+        default=DEFAULT_STRATEGY_SLUG,
+        metavar="SLUG",
+        help=f"strategy to scan with (built-ins; stored ones too when {DB_PATH_ENV} is set)",
+    )
     parser.add_argument("--every", type=int, metavar="N", help="rescan every N minutes")
     parser.add_argument("--out", type=Path, default=Path(DEFAULT_OUTPUT_CSV), help="CSV path")
     parser.add_argument(
@@ -85,6 +99,8 @@ def _validate(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None
         parser.error(f"--near must be between 0 and {MAX_NEAR_ATR}")
     if args.every is not None and args.every < 1:
         parser.error("--every must be at least 1 minute")
+    if not SLUG_PATTERN.fullmatch(args.strategy):
+        parser.error("--strategy must be a slug: 1-32 of a-z, 0-9 or -, not starting with -")
     _validate_ai(args, parser)
 
 
@@ -143,14 +159,51 @@ def _report(
     return EXIT_OK
 
 
-def run_once(args: argparse.Namespace, source: str, symbols: list[str], console: Console) -> int:
+class StrategyChoiceError(Exception):
+    """``--strategy`` names no usable strategy; the message is safe to print."""
+
+
+def load_strategy(slug: str) -> Strategy:
+    """The ``--strategy`` (already slug-shaped). A built-in never opens the database; any other
+    slug is looked up in the stored strategies only when ``SMC_DB_PATH`` is set, so a plain CLI
+    run never creates a database file."""
+    try:
+        builtin = builtin_copy(slug)
+        if builtin is not None:
+            found = builtin
+        elif os.environ.get(DB_PATH_ENV, "").strip():
+            repository = SqliteStrategyRepository(db_path_from_env())
+            found = StrategyService(repository, BUILTIN_STRATEGIES).resolve(slug)
+        else:
+            raise StrategyNotFoundError(slug)
+        resolve_all((*found.require, *found.score))
+    except StrategyNotFoundError:
+        known = ", ".join(BUILTIN_STRATEGIES)
+        raise StrategyChoiceError(f"unknown strategy {slug!r} (built-ins: {known})") from None
+    except ConditionError as exc:
+        raise StrategyChoiceError(f"strategy {slug!r} is unusable: {exc}") from None
+    except StoreError as exc:
+        log.error("%s", exc)  # names the database path, which is the operator's own
+        raise StrategyChoiceError("the strategy database is unavailable") from None
+    return found
+
+
+def run_once(
+    args: argparse.Namespace,
+    source: str,
+    symbols: list[str],
+    console: Console,
+    strategy: Strategy | None = None,
+) -> int:
+    """One scan through ``strategy`` (``smc-default`` when None) with the CLI's scan tuning."""
     options = ScanOptions(swing_length=args.swing, near_atr=args.near, all_touches=args.all_touches)
     loader = FrameCache(make_loader(source, closed_only=not args.include_forming))
-    result = run_scan(loader, symbols, args.tf, args.bars, options)
+    result = run_scan_with_strategy(loader, symbols, args.tf, args.bars, strategy, options=options)
     ai: list[AiCells] | None = None
     if args.ai and not result.all_failed:
         # After the scan has finished: the LLM calls never run while a loader is open.
-        ai = analyse_for_cli(result.rows, loader.frames, options, args.tf, _ai_settings(args))
+        name = None if strategy is None else strategy.name
+        ai = analyse_for_cli(result.rows, loader.frames, options, args.tf, _ai_settings(args), name)
     return _report(result, args, source, console, ai)
 
 
@@ -167,17 +220,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     source = "demo" if args.demo else args.source
     console = Console()
     try:
+        strategy = load_strategy(args.strategy)
         symbols = resolve_symbols(args, source)
         if args.every is None:
-            return run_once(args, source, symbols, console)
+            return run_once(args, source, symbols, console, strategy)
         while True:
-            run_once(args, source, symbols, console)  # a failed cycle is logged, not fatal
+            run_once(args, source, symbols, console, strategy)  # a failed cycle is only logged
             console.print(f"next scan in {args.every} min (Ctrl-C to stop)")
             time.sleep(args.every * SECONDS_PER_MINUTE)
     except KeyboardInterrupt:
         console.print("stopped")
         return EXIT_OK
-    except (WatchlistError, LoaderError) as exc:
+    except (WatchlistError, LoaderError, StrategyChoiceError) as exc:
         log.error("%s", exc)
         return EXIT_FAILED
 

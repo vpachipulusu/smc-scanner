@@ -78,3 +78,15 @@ JOURNAL_STORE_MESSAGE = "Journal database unavailable"
 DEFAULT_JOURNAL_LIMIT = 50
 MAX_JOURNAL_LIMIT = 100
 MAX_JOURNAL_CURSOR_CHARS = 96
+
+STRATEGIES_RATE_LIMIT = (60, 60.0)  # one bucket for the five /strategies routes, reads and writes
+# The model's ``SLUG_PATTERN`` ends in ``\Z``, which neither JavaScript nor the Rust regex engine
+# behind ``Query(pattern=...)`` understand; ``$`` means the same there (no trailing newline).
+SLUG_REGEX = r"^[a-z0-9][a-z0-9-]{0,31}$"
+STRATEGY_NOT_FOUND_MESSAGE = "Strategy not found"
+STRATEGY_EXISTS_MESSAGE = "A strategy with this slug already exists"
+BUILTIN_STRATEGY_MESSAGE = "Built-in strategies cannot be changed"
+STRATEGY_LIMIT_MESSAGE = "Strategy limit reached"
+STRATEGY_STORE_MESSAGE = "Strategy database unavailable"
+UNKNOWN_STRATEGY_MESSAGE = "Unknown strategy"
+INVALID_STRATEGY_MESSAGE = "Invalid strategy"

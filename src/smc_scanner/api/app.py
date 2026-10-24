@@ -31,11 +31,12 @@ from smc_scanner.api.constants import (
     SCHEDULER_FALSY,
     SCHEDULER_TRUTHY,
 )
-from smc_scanner.api.routes import analyses, calendar, journal, scan, schedules
+from smc_scanner.api.routes import analyses, calendar, journal, scan, schedules, strategies
 from smc_scanner.api.schemas import ERROR_RESPONSES
 
 log = logging.getLogger(__name__)
 load_dotenv()
+_MAX_LOGGED_ERROR_CHARS = 500
 
 
 def _operation_id(route: APIRoute) -> str:
@@ -64,7 +65,9 @@ async def _http_exception_handler(_: Request, exc: StarletteHTTPException) -> JS
 
 
 async def _validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
-    log.info("invalid request: %s", exc.errors())
+    # No input values: request bodies (strategy names, params) must not be echoed into the log.
+    errors = [{key: e.get(key) for key in ("loc", "type", "msg")} for e in exc.errors()]
+    log.info("invalid request: %s", str(errors)[:_MAX_LOGGED_ERROR_CHARS])
     return _error_response(422, INVALID_REQUEST_MESSAGE)
 
 
@@ -156,5 +159,6 @@ for module in (
     schedules,
     journal,
     calendar,
+    strategies,
 ):  # registration order is the OpenAPI path order
     app.include_router(module.router)
