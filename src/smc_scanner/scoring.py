@@ -1,5 +1,6 @@
 """Confluence score out of 4 for a zone on the latest candle."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import pandas as pd
@@ -26,14 +27,15 @@ def is_aligned(state: ZoneState, structure: Structure) -> bool:
     return (structure.bias == "bullish") == (state.zone.direction == BULLISH)
 
 
-def _in_ote(state: ZoneState, structure: Structure) -> bool:
+def in_ote(state: ZoneState, structure: Structure) -> bool:
+    """The zone overlaps the OTE band on its side of the market."""
     band = structure.ote_bullish if state.zone.direction == BULLISH else structure.ote_bearish
     if band is None:
         return False
     return state.zone.overlaps_band(band[0], band[1])
 
 
-def _trendline_ok(state: ZoneState, structure: Structure, ohlc: pd.DataFrame) -> bool:
+def trendline_ok(state: ZoneState, structure: Structure, ohlc: pd.DataFrame) -> bool:
     """Bullish: the latest low holds above the swing-low line. Bearish: mirrored."""
     last = ohlc.iloc[-1]
     if state.zone.direction == BULLISH:
@@ -43,7 +45,7 @@ def _trendline_ok(state: ZoneState, structure: Structure, ohlc: pd.DataFrame) ->
     return line is not None and float(last["high"]) <= line
 
 
-def _stacked(state: ZoneState, valid: list[ZoneState]) -> bool:
+def stacked(state: ZoneState, valid: Sequence[ZoneState]) -> bool:
     """An OB and an FVG of the same direction overlap in price."""
     zone = state.zone
     return any(
@@ -55,11 +57,11 @@ def _stacked(state: ZoneState, valid: list[ZoneState]) -> bool:
 
 
 def score_zone(
-    state: ZoneState, structure: Structure, valid: list[ZoneState], ohlc: pd.DataFrame
+    state: ZoneState, structure: Structure, valid: Sequence[ZoneState], ohlc: pd.DataFrame
 ) -> Confluence:
     return Confluence(
         aligned=is_aligned(state, structure),
-        in_ote=_in_ote(state, structure),
-        trendline_ok=_trendline_ok(state, structure, ohlc),
-        stacked=_stacked(state, valid),
+        in_ote=in_ote(state, structure),
+        trendline_ok=trendline_ok(state, structure, ohlc),
+        stacked=stacked(state, valid),
     )
