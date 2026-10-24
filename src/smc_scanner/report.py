@@ -10,7 +10,12 @@ from rich.text import Text
 
 from smc_scanner.models import ScanRow
 
-COLUMNS: tuple[str, ...] = tuple(field.name for field in fields(ScanRow))
+# The strategy columns stay out of the table and CSV for now: ``conditions`` is a mapping, not
+# a cell, and the output keeps its pre-strategy shape until the CLI can pick a strategy.
+_NOT_TABULATED = frozenset({"strategy", "conditions"})
+COLUMNS: tuple[str, ...] = tuple(
+    field.name for field in fields(ScanRow) if field.name not in _NOT_TABULATED
+)
 AI_COLUMNS: tuple[str, ...] = (
     "ai_action",
     "ai_confidence",
@@ -67,6 +72,10 @@ def _cell(value: object) -> str:
     return str(value)
 
 
+def _cells(row: ScanRow) -> dict[str, object]:
+    return {name: getattr(row, name) for name in COLUMNS}
+
+
 def _optional(value: float | None) -> str:
     return "" if value is None else _cell(value)
 
@@ -90,7 +99,7 @@ def render_table(
     count = 0
     for index, row in enumerate(listed):
         style = "bold green" if row.status == "TOUCHING" else ""
-        cells = [_cell(value) for value in asdict(row).values()]
+        cells = [_cell(value) for value in _cells(row).values()]
         if ai is not None:
             cells.extend(ai[index].display_row().values())
         # Text() so '[' in model or error text is never parsed as console markup.
@@ -110,7 +119,10 @@ def write_csv(rows: Iterable[ScanRow], path: Path, ai: Sequence[AiCells] | None 
         writer = csv.DictWriter(handle, fieldnames=names)
         writer.writeheader()
         for index, row in enumerate(listed):
-            record: dict[str, object] = dict(asdict(row))
+            record: dict[str, object] = {
+                name: csv_safe(value) if isinstance(value, str) else value
+                for name, value in _cells(row).items()
+            }
             if ai is not None:
                 record.update(ai[index].csv_row())
             writer.writerow(record)
@@ -118,4 +130,5 @@ def write_csv(rows: Iterable[ScanRow], path: Path, ai: Sequence[AiCells] | None 
 
 
 def rows_to_dicts(rows: Iterable[ScanRow]) -> list[dict[str, object]]:
+    """Every field, including ``strategy`` and ``conditions`` (unlike the table and CSV)."""
     return [asdict(row) for row in rows]

@@ -1,7 +1,10 @@
 """Immutable value types passed between the structure, zone, scoring and report layers."""
 
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Literal
+
+import pandas as pd
 
 Direction = Literal[1, -1]
 ZoneKind = Literal["FVG", "OB"]
@@ -88,3 +91,22 @@ class ScanRow:
     zone_age: int
     prior_touches: int
     bar_time: str
+    # The strategy that produced the row; matches ``strategy.DEFAULT_STRATEGY_SLUG`` (a literal
+    # here: the strategy package imports this module).
+    strategy: str = "smc-default"
+    # Every condition the strategy evaluated, by key. A plain dict on purpose (``asdict`` cannot
+    # deep-copy a MappingProxyType), built fresh per row; treat it as read-only. Kept out of the
+    # hash because a dict is unhashable.
+    conditions: Mapping[str, bool] = field(default_factory=dict, hash=False)
+
+
+@dataclass(frozen=True, eq=False)  # eq=False: comparing frames element-wise is ambiguous
+class ZoneContext:
+    """Everything a strategy condition may read about one candidate zone on the latest candle."""
+
+    state: ZoneState
+    structure: Structure
+    valid: Sequence[ZoneState]  # every valid zone on the frame, for cross-zone checks
+    ohlc: pd.DataFrame
+    last_index: int
+    htf_bias: Bias | None  # None when the higher timeframe is off or unknown

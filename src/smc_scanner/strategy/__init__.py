@@ -1,10 +1,25 @@
 """Strategies are data; conditions are code.
 
 A strategy is a validated, JSON-serialisable description of what to scan for. It refers to
-conditions by key only, and never carries code. The condition registry that maps keys to
-implementations lands in TRAD-35.
+conditions by key only, and never carries code. The condition registry (``conditions``) maps
+keys to implementations; the engine (``engine``) applies a strategy to a scan.
 """
 
+# TRAD-35: condition registry, presets and engine.
+from smc_scanner.strategy.builtin import BUILTIN_STRATEGIES
+from smc_scanner.strategy.conditions import (
+    Condition,
+    ConditionError,
+    ConditionInfo,
+    ConditionParamError,
+    UnknownConditionError,
+)
+from smc_scanner.strategy.engine import (
+    apply_strategy,
+    run_scan_with_strategy,
+    scan_instrument_with_strategy,
+    scan_watchlist_with_strategy,
+)
 from smc_scanner.strategy.models import (
     CONDITION_KEY_PATTERN,
     DEFAULT_STRATEGY_SLUG,
@@ -33,4 +48,15 @@ __all__ = [
     "ConditionRef",
     "ParamValue",
     "Strategy",
+    # TRAD-35
+    "BUILTIN_STRATEGIES",
+    "Condition",
+    "ConditionError",
+    "ConditionInfo",
+    "ConditionParamError",
+    "UnknownConditionError",
+    "apply_strategy",
+    "run_scan_with_strategy",
+    "scan_instrument_with_strategy",
+    "scan_watchlist_with_strategy",
 ]
