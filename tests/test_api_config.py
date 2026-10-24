@@ -101,5 +101,7 @@ def test_scan_rows_match_the_response_model() -> None:
         "prior_touches",
         "bar_time",
         "htf_bias",
+        "strategy",
+        "conditions",
     }
     assert body["failures"] == []

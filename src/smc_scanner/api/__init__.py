@@ -14,7 +14,8 @@ the csv source takes file paths, so it is CLI-only. Scans are serialised with a 
 because the MT5 connection is process-wide.
 
 Run a single worker: the scan lock, run guard, cooldowns, rate limits and AI budget
-reservations are process-local. ``POST /analyse`` and ``GET /scan`` are rate limited per endpoint
+reservations are process-local. ``POST /analyse``, ``GET /scan`` and ``/strategies`` are rate
+limited per endpoint
 (429 with ``Retry-After``); AI calls are capped per UTC day by ``AI_MAX_CALLS_PER_DAY`` and
 ``AI_MAX_COST_PER_DAY`` (429 once reached, unset means unlimited).
 
@@ -45,6 +46,7 @@ from smc_scanner.api.deps import (
     _scan_lock,
     get_provider_factory,
     get_run_deps_factory,
+    get_strategy_service,
     get_telegram_sender,
     reset_rate_limits,
 )
@@ -74,6 +76,7 @@ __all__ = [
     "app",
     "get_provider_factory",
     "get_run_deps_factory",
+    "get_strategy_service",
     "get_telegram_sender",
     "reset_rate_limits",
     "startup_warnings",

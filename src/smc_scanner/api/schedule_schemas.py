@@ -18,6 +18,7 @@ from smc_scanner.api.constants import (
     SYMBOL_PATTERN,
 )
 from smc_scanner.api.helpers import _clip
+from smc_scanner.api.strategy_schemas import StrategySlug
 from smc_scanner.config import (
     ApiSource,
     Timeframe,
@@ -34,6 +35,7 @@ from smc_scanner.schedule.store import (
     MAX_NAME_CHARS,
     Schedule,
 )
+from smc_scanner.strategy.models import DEFAULT_STRATEGY_SLUG
 
 ScheduleId = Annotated[int, Path(ge=1, le=MAX_ROW_ID)]
 Frequency = Literal["15m", "1h", "4h", "1d"]  # kept equal to timing.FREQUENCIES by a test
@@ -60,6 +62,7 @@ class ScheduleCreate(BaseModel):
     telegram_chat_id: ChatId | None = None
     mtf: bool = False
     require_htf_aligned: bool = False  # needs mtf (422 otherwise)
+    strategy: StrategySlug = DEFAULT_STRATEGY_SLUG  # an unknown slug is 422
 
 
 class ScheduleUpdate(BaseModel):
@@ -82,6 +85,7 @@ class ScheduleUpdate(BaseModel):
     telegram_chat_id: ChatId | None = None
     mtf: bool = _OMITTED
     require_htf_aligned: bool = _OMITTED
+    strategy: StrategySlug = _OMITTED  # an unknown slug is 422
 
 
 class ScheduleOut(BaseModel):
@@ -99,6 +103,9 @@ class ScheduleOut(BaseModel):
     telegram_chat_id: str | None
     mtf: bool
     require_htf_aligned: bool
+    # A deleted strategy keeps its slug here; runs then scan with smc-default. The default
+    # keeps the field optional in the generated client.
+    strategy: str = DEFAULT_STRATEGY_SLUG
     last_run_at: str | None = Field(max_length=MAX_LABEL_CHARS)
     next_run_at: str | None = Field(max_length=MAX_LABEL_CHARS)
 

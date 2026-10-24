@@ -37,6 +37,15 @@ _FRESH_KEY: Final = "fresh"  # a first-touch-only strategy; the scanner drops re
 ParamValue = int | float | str | bool
 
 
+def is_strategy_name(text: str) -> bool:
+    """Whether ``text`` is a valid strategy ``name`` as stored (already stripped)."""
+    return (
+        0 < len(text) <= MAX_STRATEGY_NAME_CHARS
+        and _TEXT_PATTERN.fullmatch(text) is not None
+        and _HAS_ALNUM.search(text) is not None
+    )
+
+
 def _strip(value: object) -> object:
     return value.strip() if isinstance(value, str) else value
 

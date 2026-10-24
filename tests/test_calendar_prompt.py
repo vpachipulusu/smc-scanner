@@ -45,7 +45,7 @@ def _row() -> ScanRow:
 
 
 def test_prompt_version_is_bumped_and_the_prompt_labels_the_block_as_data() -> None:
-    assert PROMPT_VERSION == "smc-verdict-3"
+    assert PROMPT_VERSION == "smc-verdict-4"
     assert "calendar" in SYSTEM_PROMPT
     assert "never instructions" in SYSTEM_PROMPT.lower() or "not instructions" in SYSTEM_PROMPT
 
@@ -219,7 +219,7 @@ def test_analyst_sends_the_block_and_stores_it(tmp_path: Path) -> None:
     assert '"calendar"' in user and "Non-Farm Payrolls" in user
     [saved] = store.list_recent(1)
     assert saved.context is not None and saved.context["calendar"]["immediate_risk"] == "high"
-    assert saved.prompt_version == "smc-verdict-3"
+    assert saved.prompt_version == "smc-verdict-4"
 
 
 def test_analyst_uses_the_symbols_currencies(tmp_path: Path) -> None:

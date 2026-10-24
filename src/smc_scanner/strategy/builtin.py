@@ -92,3 +92,9 @@ PRESETS: Final[tuple[Strategy, ...]] = (
 BUILTIN_STRATEGIES: Final[Mapping[str, Strategy]] = MappingProxyType(
     {preset.slug: preset for preset in PRESETS}
 )
+
+
+def builtin_copy(slug: str) -> Strategy | None:
+    """A deep copy of the built-in ``slug`` (the presets are shared), or None if there is none."""
+    preset = BUILTIN_STRATEGIES.get(slug)
+    return None if preset is None else preset.model_copy(deep=True)

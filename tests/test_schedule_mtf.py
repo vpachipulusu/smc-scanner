@@ -12,6 +12,7 @@ from smc_scanner.ai_cli import FrameCache
 from smc_scanner.scanner import ScanOptions
 from smc_scanner.schedule.runner import ScanData, default_analyse, make_scan_fn
 from smc_scanner.schedule.store import Schedule
+from smc_scanner.strategy.builtin import SMC_DEFAULT
 
 OPTIONS = ScanOptions(swing_length=SWING)
 HOLD = '{"action": "HOLD", "confidence": 40, "reasons": ["weak"], "summary": "No edge."}'
@@ -33,7 +34,7 @@ def _loader(htf_drift: int = 1) -> TfLoader:
 
 
 def _scan(schedule: Schedule, loader: TfLoader) -> ScanData:
-    return make_scan_fn(loader_factory=lambda _: loader, options=OPTIONS)(schedule)
+    return make_scan_fn(loader_factory=lambda _: loader, options=OPTIONS)(schedule, SMC_DEFAULT)
 
 
 def test_scan_without_mtf_keeps_only_the_scan_timeframe() -> None:

@@ -24,7 +24,14 @@ import pandas as pd
 
 from smc_scanner.ai.budget import BudgetGuard, Reservation, lookup_price
 from smc_scanner.ai.budget import estimate_cost as worst_case_cost
-from smc_scanner.ai.context import ScanContext, build_context, with_calendar, with_mtf
+from smc_scanner.ai.context import (
+    ScanContext,
+    build_context,
+    strategy_block,
+    with_calendar,
+    with_mtf,
+    with_strategy,
+)
 from smc_scanner.ai.prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_user_message
 from smc_scanner.ai.providers import MAX_TOKENS, AiError, AiProvider
 from smc_scanner.ai.store import AnalysisKey, AnalysisRecord, AnalysisStore, StoreError
@@ -213,6 +220,22 @@ class _Run:
     force: bool
     budget: BudgetGuard | None = None
     calendar: CalendarLookup | None = None
+    strategy_name: str | None = None
+
+    def _with_strategy(self, built: ScanContext, row: ScanRow) -> ScanContext:
+        """``built`` plus the strategy block (named by ``strategy_name``, else the row's slug).
+        Optional context: a row without conditions, a name the block refuses, or a block that
+        does not fit leaves it out."""
+        if not row.conditions:
+            return built
+        try:
+            block = strategy_block(self.strategy_name or row.strategy, row.conditions)
+            return with_strategy(built, block)
+        except ValueError as exc:
+            log.warning(
+                "%s: strategy left out of the context: %s", row.instrument, type(exc).__name__
+            )
+            return built
 
     def _with_calendar(self, built: ScanContext, row: ScanRow) -> ScanContext:
         """``built`` plus the calendar block when there is one. Optional context: any failure
@@ -263,6 +286,7 @@ class _Run:
                     built = with_mtf(built, inputs.mtf, row)
                 except ValueError:  # optional blocks: too big or bad name -> base context only
                     log.warning("%s: MTF blocks left out of the context", row.instrument)
+            built = self._with_strategy(built, row)
             built = self._with_calendar(built, row)
             context = dict(built)
             user = build_user_message(built)
@@ -352,6 +376,7 @@ class _Run:
             tokens_out=tokens[1],
             cost_estimate=cost if cost is not None else _stored_cost(model, tokens),
             error=error,
+            strategy=row.strategy,
         )
         try:
             self.store.save(record, overwrite=self.force and error is None)
@@ -374,6 +399,7 @@ def analyse_hits(
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
     budget: BudgetGuard | None = None,
     calendar: CalendarLookup | None = None,
+    strategy_name: str | None = None,
 ) -> list[AnalysisResult]:
     """One result per input row, in input order.
 
@@ -389,10 +415,13 @@ def analyse_hits(
 
     ``calendar`` (given the current time, returns the calendar snapshot) adds an economic
     calendar block to each row's context; it is optional context and never makes a row fail.
+
+    Each context also gets a strategy block: ``strategy_name`` (the row's strategy slug when
+    None) and which of the row's conditions held. The strategy's description is never sent.
     """
     listed = list(rows)
     _utc(now())  # fail fast on a naive clock
-    run = _Run(provider, store, source, timeframe, now, force, budget, calendar)
+    run = _Run(provider, store, source, timeframe, now, force, budget, calendar, strategy_name)
     results: dict[int, AnalysisResult] = {}
     eligible: list[tuple[int, ScanRow]] = []
     for index, row in enumerate(listed):

@@ -2,20 +2,27 @@
 
 import logging
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query
 
 from smc_scanner.ai.analyst import (
     AnalysisResult,
+    CalendarLookup,
+    HitSource,
     analyse_hits,
     make_hit_source,
 )
 from smc_scanner.ai.budget import (
     BudgetExceededError,
+    BudgetGuard,
 )
+from smc_scanner.ai.providers import AiProvider
 from smc_scanner.ai.store import (
     AnalysisRecord,
+    SqliteAnalysisStore,
     StoreError,
 )
 from smc_scanner.ai.verdict import CONFIDENCE_MAX, CONFIDENCE_MIN, Action, AiVerdict
@@ -35,6 +42,7 @@ from smc_scanner.api.deps import (
     CalendarServiceDep,
     InternalKeyDep,
     ProviderFactoryDep,
+    StrategyServiceDep,
     _analyse_lock,
     _budget_guard,
     _budget_refused,
@@ -55,9 +63,12 @@ from smc_scanner.api.schemas import (
     ScanFailureOut,
     ScanRowOut,
 )
+from smc_scanner.api.strategy_deps import resolve_strategy
 from smc_scanner.loaders import make_loader
-from smc_scanner.models import Bias
-from smc_scanner.scanner import ScanOptions, run_scan
+from smc_scanner.models import Bias, ScanRow
+from smc_scanner.scanner import ScanOptions, ScanResult
+from smc_scanner.strategy.engine import run_scan_with_strategy, uses_mtf
+from smc_scanner.strategy.models import DEFAULT_STRATEGY_SLUG, SLUG_PATTERN, Strategy
 
 log = logging.getLogger(__name__)
 _TIMEFRAME_NAME = re.compile(r"[A-Za-z0-9]{1,8}")
@@ -87,11 +98,67 @@ def _provider_failed_everywhere(results: list[AnalysisResult]) -> bool:
     return not any(result.status in {"analysed", "skipped_duplicate"} for result in results)
 
 
+def _locked_scan(
+    body: AnalyseRequest, strategy: Strategy, options: ScanOptions
+) -> tuple[FrameCache, ScanResult]:
+    """The scan under the scan lock, keeping every loaded frame for the analyst."""
+    wanted = _symbols(body.source, ",".join(body.symbols) if body.symbols else None)
+    with _scan_lock:
+        frames = FrameCache(make_loader(body.source))
+        result = run_scan_with_strategy(
+            frames,
+            wanted,
+            body.tf,
+            body.bars,
+            strategy,
+            options=options,
+            mtf=body.mtf,
+            require_htf_aligned=body.require_htf_aligned,
+            ltf_min_score=body.min_score,
+            ltf_max_rows=body.max_rows,
+        )
+    return frames, result
+
+
+@dataclass(frozen=True)
+class _AnalysisRun:
+    provider: AiProvider
+    store: SqliteAnalysisStore
+    budget: BudgetGuard
+    calendar: CalendarLookup
+    strategy_name: str
+
+
+def _analyse_rows(
+    rows: Sequence[ScanRow], source: HitSource, body: AnalyseRequest, run: _AnalysisRun
+) -> list[AnalysisResult]:
+    """The analysis phase under its lock; a used-up budget is 429, a broken store 503."""
+    try:
+        with _analyse_lock:
+            return analyse_hits(
+                rows,
+                source,
+                run.provider,
+                run.store,
+                timeframe=body.tf,
+                min_score=body.min_score,
+                max_rows=body.max_rows,
+                budget=run.budget,
+                calendar=run.calendar,
+                strategy_name=run.strategy_name,
+            )
+    except BudgetExceededError as exc:
+        raise _budget_refused(exc) from exc
+    except StoreError as exc:
+        raise _store_unavailable(exc) from exc
+
+
 @router.post(
     "/analyse",
     response_model=AnalyseResponse,
     tags=["analyses"],
     responses={
+        422: {"model": ErrorResponse, "description": "Invalid body, or an unknown strategy"},
         429: {
             "model": ErrorResponse,
             "description": "Rate limited, or the daily AI budget is used up; see Retry-After",
@@ -110,6 +177,7 @@ def analyse(
     __: AnalyseRateDep,
     make_ai_provider: ProviderFactoryDep,
     calendar: CalendarServiceDep,
+    service: StrategyServiceDep,
 ) -> AnalyseResponse:
     """Scan, then ask the AI about the best hits; every row comes back with its AI result.
 
@@ -122,55 +190,33 @@ def analyse(
     analysed are served from the database even then, since they need no call. A budget refusal
     comes when a call is needed: rows analysed before it stay in the database (read them from
     ``GET /analyses``) but are not in the 429 body.
+
+    ``strategy`` works as on ``/scan`` (422 when unknown, before the AI key is checked); the
+    stored analyses record it and the AI is told its name and conditions.
     """
+    strategy = resolve_strategy(service, body.strategy)
     provider = make_ai_provider()
     store = _open_store(read_only=False)
     budget = _budget_guard(store)
     options = ScanOptions(swing_length=body.swing, near_atr=body.near, all_touches=body.all_touches)
-    wanted = _symbols(body.source, ",".join(body.symbols) if body.symbols else None)
-    with _scan_lock:
-        frames = FrameCache(make_loader(body.source))
-        result = run_scan(
-            frames,
-            wanted,
-            body.tf,
-            body.bars,
-            options,
-            mtf=body.mtf,
-            require_htf_aligned=body.require_htf_aligned,
-            ltf_min_score=body.min_score,
-            ltf_max_rows=body.max_rows,
-        )
+    frames, result = _locked_scan(body, strategy, options)
     if result.all_failed:
         raise HTTPException(status_code=503, detail=NOTHING_LOADED_MESSAGE)
-    try:
-        with _analyse_lock:
-            results = analyse_hits(
-                result.rows,
-                make_hit_source(
-                    frames.frames,
-                    options,
-                    timeframe=body.tf,
-                    mtf=body.mtf,
-                    lookup=lambda symbol, tf: frames.frames_by_timeframe.get((symbol, tf)),
-                ),
-                provider,
-                store,
-                timeframe=body.tf,
-                min_score=body.min_score,
-                max_rows=body.max_rows,
-                budget=budget,
-                calendar=calendar.snapshot,
-            )
-    except BudgetExceededError as exc:
-        raise _budget_refused(exc) from exc
-    except StoreError as exc:
-        raise _store_unavailable(exc) from exc
+    source = make_hit_source(
+        frames.frames,
+        options,
+        timeframe=body.tf,
+        mtf=body.mtf or uses_mtf(strategy),  # the AI then gets the neighbour timeframes too
+        lookup=lambda symbol, tf: frames.frames_by_timeframe.get((symbol, tf)),
+    )
+    run = _AnalysisRun(provider, store, budget, calendar.snapshot, strategy.name)
+    results = _analyse_rows(result.rows, source, body, run)
     if _provider_failed_everywhere(results):
         raise HTTPException(status_code=502, detail=AI_FAILED_MESSAGE)
     return AnalyseResponse(
         source=body.source,
         tf=body.tf,
+        strategy=strategy.slug,
         count=len(results),
         rows=[_analysed_row(r, result.htf_bias.get(r.row.instrument)) for r in results],
         failures=[ScanFailureOut(symbol=f.symbol, error=f.error) for f in result.failures],
@@ -206,6 +252,15 @@ def _timeframes_used(record: AnalysisRecord) -> list[str]:
     return used
 
 
+def _stored_strategy(record: AnalysisRecord) -> str:
+    """The stored slug; ``smc-default`` for rows made before strategies (NULL), and for any
+    value that is not slug-shaped, since stored text is untrusted."""
+    slug = record.strategy
+    if isinstance(slug, str) and SLUG_PATTERN.fullmatch(slug):
+        return slug
+    return DEFAULT_STRATEGY_SLUG
+
+
 def _analysis_out(record: AnalysisRecord) -> AnalysisOut:
     verdict = _stored_verdict(record)
     key = record.key
@@ -227,6 +282,7 @@ def _analysis_out(record: AnalysisRecord) -> AnalysisOut:
         status="ok" if verdict is not None and record.error is None else "failed",
         verdict=verdict,
         timeframes_used=_timeframes_used(record),
+        strategy=_stored_strategy(record),
     )
 
 

@@ -52,7 +52,9 @@ from smc_scanner.api.constants import (
     SCHEDULE_NOT_FOUND_MESSAGE,
     SCHEDULE_STORE_MESSAGE,
     STORE_UNAVAILABLE_MESSAGE,
+    STRATEGIES_RATE_LIMIT,
 )
+from smc_scanner.api.strategy_deps import strategy_service_for
 from smc_scanner.econ_calendar.forexfactory import ForexFactoryCalendarSource
 from smc_scanner.econ_calendar.models import CalendarEvent, CalendarSource
 from smc_scanner.econ_calendar.service import CalendarService
@@ -88,6 +90,7 @@ from smc_scanner.schedule.store import (
     previous_action,
 )
 from smc_scanner.schedule.timing import server_zone_from_env
+from smc_scanner.strategy.service import StrategyService
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +107,7 @@ RATE_LIMITERS: dict[str, RateLimiter] = {
     "journal": RateLimiter(*JOURNAL_RATE_LIMIT),
     "journal_stats": RateLimiter(*JOURNAL_STATS_RATE_LIMIT),
     "calendar": RateLimiter(*CALENDAR_RATE_LIMIT),
+    "strategies": RateLimiter(*STRATEGIES_RATE_LIMIT),
 }
 
 
@@ -132,6 +136,7 @@ AnalyseRateDep = Annotated[None, Depends(_rate_limit("analyse"))]
 JournalRateDep = Annotated[None, Depends(_rate_limit("journal"))]
 JournalStatsRateDep = Annotated[None, Depends(_rate_limit("journal_stats"))]
 CalendarRateDep = Annotated[None, Depends(_rate_limit("calendar"))]
+StrategiesRateDep = Annotated[None, Depends(_rate_limit("strategies"))]
 
 
 def require_internal_key(
@@ -245,6 +250,7 @@ def _build_run_deps(db_path: FsPath, stop: threading.Event | None = None) -> Run
         default_chat_id=chat,
         zone=server_zone_from_env(),
         stop_event=stop,
+        strategies=strategy_service_for(lambda: db_path, init_lock=_store_init_lock),
     )
 
 
@@ -418,3 +424,27 @@ def get_journal_store() -> JournalStore:
 
 
 JournalStoreDep = Annotated[JournalStore, Depends(get_journal_store)]
+
+
+_strategy_services: dict[FsPath, StrategyService] = {}
+_strategy_services_lock = threading.Lock()
+
+
+def get_strategy_service() -> StrategyService:
+    """Built-in plus stored strategies on the shared database: one service per path, so the
+    schema setup runs once per process. The file is opened on the first call that needs stored
+    strategies (a listing, a stored slug), so resolving a built-in never touches it. Use a service
+    outside ``_store_init_lock``: its first open takes that lock. Tests override this."""
+    try:
+        path = db_path_from_env()
+    except StoreError:  # surfaces (as a 503) only when a stored strategy is asked for
+        return strategy_service_for(db_path_from_env)
+    with _strategy_services_lock:
+        service = _strategy_services.get(path)
+        if service is None:
+            service = strategy_service_for(lambda: path, init_lock=_store_init_lock)
+            _strategy_services[path] = service
+        return service
+
+
+StrategyServiceDep = Annotated[StrategyService, Depends(get_strategy_service)]

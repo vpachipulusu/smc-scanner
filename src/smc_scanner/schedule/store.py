@@ -33,6 +33,7 @@ from smc_scanner.ai.store import (
 )
 from smc_scanner.config import TIMEFRAMES
 from smc_scanner.schedule.timing import FREQUENCIES
+from smc_scanner.strategy.models import DEFAULT_STRATEGY_SLUG, SLUG_PATTERN
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ MAX_SCHEDULES: Final = 50
 MAX_CONFIDENCE: Final = 100.0
 
 _SCHEMA: Final = (
-    """
+    f"""
     CREATE TABLE IF NOT EXISTS schedules (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -62,7 +63,8 @@ _SCHEMA: Final = (
         last_run_at TEXT,
         next_run_at TEXT,
         mtf INTEGER NOT NULL DEFAULT 0,
-        require_htf_aligned INTEGER NOT NULL DEFAULT 0
+        require_htf_aligned INTEGER NOT NULL DEFAULT 0,
+        strategy TEXT NOT NULL DEFAULT '{DEFAULT_STRATEGY_SLUG}'
     )
     """,
     """
@@ -80,21 +82,27 @@ _SCHEMA: Final = (
 _COLUMNS: Final = (
     "id, name, enabled, source, tf, symbols, frequency, min_score, min_confidence, "
     "only_on_change, send_hold, telegram_chat_id, last_run_at, next_run_at, "
-    "mtf, require_htf_aligned"
+    "mtf, require_htf_aligned, strategy"
 )
-# Columns added after the first release; each is added to an existing table when missing.
-_ADDED_COLUMNS: Final = ("mtf", "require_htf_aligned")
+# Columns added after the first release, with their definitions (constants, never input); each
+# is added to an existing table when missing. The defaults match ``_SCHEMA``.
+_ADDED_COLUMNS: Final = (
+    ("mtf", "INTEGER NOT NULL DEFAULT 0"),
+    ("require_htf_aligned", "INTEGER NOT NULL DEFAULT 0"),
+    ("strategy", f"TEXT NOT NULL DEFAULT '{DEFAULT_STRATEGY_SLUG}'"),
+)
 _INSERT: Final = """
 INSERT INTO schedules (
     name, enabled, source, tf, symbols, frequency, min_score, min_confidence, only_on_change,
-    send_hold, telegram_chat_id, last_run_at, next_run_at, mtf, require_htf_aligned
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    send_hold, telegram_chat_id, last_run_at, next_run_at, mtf, require_htf_aligned, strategy
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 # SET expressions read the row's old values, so the CASE sees the frequency/enabled being replaced.
 _UPDATE: Final = """
 UPDATE schedules SET
     name = ?, source = ?, tf = ?, symbols = ?, min_score = ?, min_confidence = ?,
     only_on_change = ?, send_hold = ?, telegram_chat_id = ?, mtf = ?, require_htf_aligned = ?,
+    strategy = ?,
     next_run_at = CASE WHEN frequency = ? AND enabled = ? THEN next_run_at ELSE NULL END,
     frequency = ?, enabled = ?
 WHERE id = ?
@@ -135,6 +143,8 @@ class Schedule:
     # Multi-timeframe analysis: show the HTF bias to the AI; optionally drop hits it opposes.
     mtf: bool = False
     require_htf_aligned: bool = False
+    # Slug of the strategy to scan with; one that no longer exists falls back to the default.
+    strategy: str = DEFAULT_STRATEGY_SLUG
 
     def __post_init__(self) -> None:
         if not self.name.strip() or len(self.name) > MAX_NAME_CHARS:
@@ -155,6 +165,8 @@ class Schedule:
             raise ValueError("telegram_chat_id must be a numeric chat id or an @channel name")
         if self.require_htf_aligned and not self.mtf:
             raise ValueError("require_htf_aligned needs mtf")
+        if not isinstance(self.strategy, str) or not SLUG_PATTERN.fullmatch(self.strategy):
+            raise ValueError("strategy must be a strategy slug")
         if self.min_score < 0:
             raise ValueError("min_score must not be negative")
         if not math.isfinite(self.min_confidence) or not 0 <= self.min_confidence <= MAX_CONFIDENCE:
@@ -243,7 +255,8 @@ def _symbols_from(text: str) -> tuple[str, ...]:
 
 def _to_schedule(row: tuple[Any, ...]) -> Schedule:
     (row_id, name, enabled, source, tf, symbols, frequency, min_score, min_confidence) = row[:9]
-    (only_on_change, send_hold, chat_id, last_run, next_run, mtf, require_aligned) = row[9:]
+    (only_on_change, send_hold, chat_id, last_run, next_run, mtf, require_aligned) = row[9:16]
+    strategy = row[16]
     try:
         return Schedule(
             name=name,
@@ -262,6 +275,7 @@ def _to_schedule(row: tuple[Any, ...]) -> Schedule:
             next_run_at=_parse_time(next_run),
             mtf=bool(mtf),
             require_htf_aligned=bool(require_aligned),
+            strategy=strategy,
         )
     except ValueError as exc:
         raise StoreError(f"schedule database holds an invalid schedule: {exc}") from exc
@@ -281,6 +295,7 @@ def _fields(schedule: Schedule) -> tuple[Any, ...]:
         schedule.telegram_chat_id,
         int(schedule.mtf),
         int(schedule.require_htf_aligned),
+        schedule.strategy,
     )
 
 
@@ -303,11 +318,11 @@ class SqliteScheduleRepository:
     def _add_missing_columns(conn: sqlite3.Connection) -> None:
         """Idempotent; the shared ``user_version`` is deliberately left alone."""
         columns = {row[1] for row in conn.execute("PRAGMA table_info(schedules)")}
-        for name in _ADDED_COLUMNS:
+        for name, definition in _ADDED_COLUMNS:
             if name in columns:
                 continue
             try:
-                conn.execute(f"ALTER TABLE schedules ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
+                conn.execute(f"ALTER TABLE schedules ADD COLUMN {name} {definition}")
             except sqlite3.OperationalError as exc:
                 if "duplicate column" not in str(exc):  # another process added it first
                     raise
@@ -348,6 +363,7 @@ class SqliteScheduleRepository:
             _iso(schedule.next_run_at),
             int(schedule.mtf),
             int(schedule.require_htf_aligned),
+            schedule.strategy,
         )
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM schedules").fetchone()[0]

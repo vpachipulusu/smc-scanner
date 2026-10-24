@@ -79,10 +79,15 @@ from smc_scanner.loaders import make_loader
 from smc_scanner.loaders.base import Loader
 from smc_scanner.models import ScanRow
 from smc_scanner.notify.telegram import SendResult, format_verdict_message, send_message
-from smc_scanner.scanner import ScanOptions, run_scan
+from smc_scanner.scanner import ScanOptions
 from smc_scanner.schedule.rules import decide
 from smc_scanner.schedule.store import AlertKey, Schedule, ScheduleRepository
 from smc_scanner.schedule.timing import GRACE, SERVER_ZONE, is_due, missed_slots, next_run_after
+from smc_scanner.strategy.builtin import builtin_copy
+from smc_scanner.strategy.conditions import ConditionError, resolve_all
+from smc_scanner.strategy.engine import run_scan_with_strategy, uses_mtf
+from smc_scanner.strategy.models import DEFAULT_STRATEGY_SLUG, Strategy
+from smc_scanner.strategy.store import StrategyNotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -117,9 +122,16 @@ class ScanData:
     options: ScanOptions
     # every frame the scan loaded, by (symbol, timeframe): the neighbours of a multi-timeframe scan
     all_frames: Mapping[tuple[str, str], pd.DataFrame] = field(default_factory=dict)
+    strategy: Strategy | None = None  # what the rows were scanned with; None: smc-default
 
 
-ScanFn = Callable[[Schedule], ScanData]
+class StrategySource(Protocol):
+    """Where a run looks up its schedule's strategy (``strategy.service.StrategyService``)."""
+
+    def resolve(self, slug: str | None) -> Strategy: ...
+
+
+ScanFn = Callable[[Schedule, Strategy], ScanData]
 AnalyseFn = Callable[[ScanData, Schedule, AiProvider, AnalysisStore, Clock], list[AnalysisResult]]
 Sender = Callable[[str, str, str], SendResult]  # bot token, chat id, HTML text
 PreviousAction = Callable[[str, str, str], str | None]  # symbol, timeframe, bar time
@@ -173,16 +185,18 @@ def default_analyse(
     when given, the daily AI budget (``BudgetExceededError`` ends the run, see ``_run``).
     ``calendar`` adds the economic calendar block to each verdict context."""
 
+    strategy = data.strategy
     source = make_hit_source(
         data.frames,
         data.options,
         timeframe=schedule.tf,
-        mtf=schedule.mtf,
+        mtf=schedule.mtf or (strategy is not None and uses_mtf(strategy)),
         lookup=lambda symbol, timeframe: data.all_frames.get((symbol, timeframe)),
     )
     return analyse_hits(
         data.rows, source, provider, store, timeframe=schedule.tf, min_score=schedule.min_score,
         now=clock, budget=budget, calendar=calendar,
+        strategy_name=None if strategy is None else strategy.name,
     )  # fmt: skip
 
 
@@ -215,6 +229,7 @@ class RunDeps:
     stop_event: threading.Event = field(default_factory=threading.Event)
     lock_timeout: float = SCAN_LOCK_TIMEOUT_SECONDS
     record: JobRecorder = _no_record  # job log: called once per run, errors are swallowed
+    strategies: StrategySource | None = None  # None: built-in strategies only
 
 
 def telegram_settings_from_env() -> tuple[str, str | None]:
@@ -230,17 +245,19 @@ def make_scan_fn(
     bars: int = DEFAULT_BARS,
     options: ScanOptions | None = None,
 ) -> ScanFn:
-    """A scan over closed bars only (``make_loader`` defaults to ``closed_only=True``)."""
+    """A scan over closed bars only (``make_loader`` defaults to ``closed_only=True``), through
+    the schedule's strategy. The scan tuning is ``options``, whatever the strategy's own is."""
     chosen = options or ScanOptions()
 
-    def scan(schedule: Schedule) -> ScanData:
+    def scan(schedule: Schedule, strategy: Strategy) -> ScanData:
         cache = FrameCache(loader_factory(schedule.source))
-        result = run_scan(
+        result = run_scan_with_strategy(
             cache,
             schedule.symbols,
             schedule.tf,
             bars,
-            chosen,
+            strategy,
+            options=chosen,
             mtf=schedule.mtf,
             require_htf_aligned=schedule.require_htf_aligned,
             ltf_min_score=schedule.min_score,
@@ -252,6 +269,7 @@ def make_scan_fn(
             frames=dict(cache.frames),
             options=chosen,
             all_frames=dict(cache.frames_by_timeframe),
+            strategy=strategy,
         )
 
     return scan
@@ -273,7 +291,39 @@ def _acquire_scan_lock(deps: RunDeps) -> bool:
             return False
 
 
-def _scan_under_lock(schedule: Schedule, deps: RunDeps) -> ScanData | RunReport:
+def _builtin_strategy(slug: str) -> Strategy:
+    """A copy of a built-in (never the shared preset); StrategyNotFoundError otherwise."""
+    found = builtin_copy(slug)
+    if found is None:
+        raise StrategyNotFoundError("not a built-in strategy")
+    return found
+
+
+def _lookup_strategy(slug: str, deps: RunDeps) -> Strategy:
+    found = _builtin_strategy(slug) if deps.strategies is None else deps.strategies.resolve(slug)
+    resolve_all((*found.require, *found.score))  # a condition the registry no longer has
+    return found
+
+
+def resolve_schedule_strategy(schedule: Schedule, deps: RunDeps) -> Strategy | RunReport:
+    """The schedule's strategy. One that was deleted, or whose conditions no longer resolve,
+    falls back to ``smc-default`` with a warning; a broken strategy store fails the run, since
+    scanning with other rules than the user chose would send alerts they did not ask for."""
+    sid = schedule.id or 0
+    try:
+        return _lookup_strategy(schedule.strategy, deps)
+    except (StrategyNotFoundError, ConditionError) as exc:
+        log.warning(
+            "schedule %s: strategy %r unusable (%s), scanning with %s",
+            sid, schedule.strategy, type(exc).__name__, DEFAULT_STRATEGY_SLUG,
+        )  # fmt: skip
+        return _builtin_strategy(DEFAULT_STRATEGY_SLUG)
+    except StoreError as exc:
+        log.error("schedule %s: strategy store failed: %s", sid, type(exc).__name__)
+        return RunReport(sid, "failed", errors=("strategy store unavailable",))
+
+
+def _scan_under_lock(schedule: Schedule, strategy: Strategy, deps: RunDeps) -> ScanData | RunReport:
     sid = schedule.id or 0
     if not _acquire_scan_lock(deps):
         if deps.stop_event.is_set():
@@ -281,7 +331,7 @@ def _scan_under_lock(schedule: Schedule, deps: RunDeps) -> ScanData | RunReport:
         log.warning("schedule %s: scan lock busy, run postponed", sid)
         return RunReport(sid, "busy")
     try:
-        return deps.scan(schedule)
+        return deps.scan(schedule, strategy)
     except Exception as exc:
         log.error("schedule %s: scan failed: %s", sid, type(exc).__name__)
         return RunReport(sid, "failed", errors=(_short(exc),))
@@ -326,9 +376,20 @@ class _Outcome:
     errors: list[str] = field(default_factory=list)
 
 
+def _strategy_label(strategy: Strategy | None, wanted: str) -> str | None:
+    """The name an alert shows: none for the default the schedule asked for, so those messages
+    read as before; a fallback from ``wanted`` says so."""
+    if strategy is None:
+        return None
+    if strategy.slug != wanted:
+        return f"{strategy.name} (fallback)"
+    return None if strategy.slug == DEFAULT_STRATEGY_SLUG else strategy.name
+
+
 def _deliver(
-    schedule: Schedule, sid: int, results: list[AnalysisResult], deps: RunDeps
+    schedule: Schedule, sid: int, results: list[AnalysisResult], deps: RunDeps, label: str | None
 ) -> _Outcome:
+    """``label`` names the strategy in each message (None: no strategy line)."""
     out = _Outcome()
     chat = schedule.telegram_chat_id or deps.default_chat_id
     for result in results:
@@ -362,7 +423,7 @@ def _deliver(
             out.errors.append(f"{symbol}: alert store error ({_short(exc)})")
             continue
         text = format_verdict_message(
-            symbol, schedule.tf, verdict, zone=(row.zone_low, row.zone_high)
+            symbol, schedule.tf, verdict, zone=(row.zone_low, row.zone_high), strategy=label
         )
         sent = _send_one(deps, deps.telegram_token, chat, text)
         if sent.ok:
@@ -402,7 +463,10 @@ def _run_status(results: list[AnalysisResult], delivered: int) -> RunStatus:
 
 def _run(schedule: Schedule, deps: RunDeps) -> RunReport:
     sid = schedule.id or 0
-    scanned = _scan_under_lock(schedule, deps)
+    strategy = resolve_schedule_strategy(schedule, deps)  # before the lock: it may read the DB
+    if isinstance(strategy, RunReport):
+        return strategy
+    scanned = _scan_under_lock(schedule, strategy, deps)
     if isinstance(scanned, RunReport):
         return scanned
     try:  # from here on no lock is held: the model and Telegram can be slow
@@ -417,8 +481,12 @@ def _run(schedule: Schedule, deps: RunDeps) -> RunReport:
         log.error("schedule %s: analysis failed: %s", sid, type(exc).__name__)
         return RunReport(sid, "failed", rows=len(scanned.rows), errors=(_short(exc),))
     failed = [r for r in results if r.status == "failed"]
-    outcome = _deliver(schedule, sid, results, deps)
+    outcome = _deliver(
+        schedule, sid, results, deps, _strategy_label(scanned.strategy, schedule.strategy)
+    )
     errors = [*(f"{r.row.instrument}: {r.error}" for r in failed), *outcome.errors]
+    if strategy.slug != schedule.strategy:  # shown in the job log next to the run
+        errors.append(f"strategy {schedule.strategy} unusable, scanned with {strategy.slug}")
     return RunReport(
         sid,
         _run_status(results, outcome.delivered),

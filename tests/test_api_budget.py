@@ -19,6 +19,7 @@ from smc_scanner.scanner import ScanOptions, scan_instrument
 from smc_scanner.schedule.joblog import SqliteJobLogStore
 from smc_scanner.schedule.runner import RunDeps, ScanData, run_schedule
 from smc_scanner.schedule.store import Schedule, SqliteScheduleRepository
+from smc_scanner.strategy import Strategy
 
 SECRET = "sk-ant-test-secret-value"
 INTERNAL = "internal-key-value-123"
@@ -241,7 +242,7 @@ def _scheduled(tmp_path: Path, provider: FakeProvider) -> tuple[Schedule, RunDep
     rows = tuple(scan_instrument("EURUSD", OHLC, OPTIONS))
     assert rows
 
-    def scan(_: Schedule) -> ScanData:
+    def scan(_: Schedule, __: Strategy) -> ScanData:
         return ScanData(rows=rows, frames={"EURUSD": OHLC}, options=OPTIONS)
 
     deps = replace(deps, scan=scan, provider_factory=lambda: provider, clock=lambda: NOW)

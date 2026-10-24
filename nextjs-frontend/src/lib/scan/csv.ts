@@ -26,7 +26,8 @@ export const CSV_COLUMNS = [
 // A cell starting with one of these would be run as a formula by a spreadsheet.
 const FORMULA_PREFIX = /^[=+\-@\t\r]/;
 
-function cell(value: ScanRowOut[keyof ScanRowOut]): string {
+// Only the CSV columns reach here; `strategy` and `conditions` are not columns (matches the CLI).
+function cell(value: ScanRowOut[(typeof CSV_COLUMNS)[number]]): string {
   if (value == null) return '';
   if (typeof value === 'boolean') return value ? 'True' : 'False';
   if (typeof value === 'number') return String(value); // a minus sign is not a formula
