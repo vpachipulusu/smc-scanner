@@ -8,6 +8,7 @@ import { LogTradeButton } from '@/components/journal/log-trade-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { AiVerdict, AnalysisOut } from '@/lib/api/analyses';
 import type { CalendarResult } from '@/lib/api/calendar';
+import { DEFAULT_STRATEGY } from '@/lib/scan/params';
 import { NOT_AVAILABLE, formatPrice, formatUtc, stringList, textOrNA } from './format';
 import { MtfContext } from './mtf-context';
 import { SetupChart } from './setup-chart';
@@ -29,6 +30,12 @@ function providerModel(analysis: AnalysisOut): string {
 
 function zoneRange(analysis: AnalysisOut): string {
   return `${formatPrice(analysis.zone_low)} to ${formatPrice(analysis.zone_high)}`;
+}
+
+/** The strategy's name when known, with the slug alongside so a renamed one stays traceable. */
+export function strategyLabel(analysis: AnalysisOut, name?: string): string {
+  const slug = textOrNA(analysis.strategy ?? DEFAULT_STRATEGY);
+  return name && name.trim() && name !== slug ? `${name} (${slug})` : slug;
 }
 
 function Notice({ children }: { children: string }) {
@@ -67,9 +74,12 @@ function Reasons({ verdict }: { verdict: AiVerdict }) {
 export function AnalysisDetail({
   analysis,
   calendar,
+  strategyName,
 }: {
   analysis: AnalysisOut;
   calendar?: CalendarResult;
+  /** The strategy's display name from GET /strategies; the slug is shown when it is unknown. */
+  strategyName?: string;
 }) {
   const { verdict } = analysis;
   return (
@@ -91,6 +101,7 @@ export function AnalysisDetail({
           <Fact label="Analysed" value={formatUtc(analysis.created_at)} />
           <Fact label="Provider / model" value={providerModel(analysis)} />
           <Fact label="Prompt version" value={textOrNA(analysis.prompt_version)} />
+          <Fact label="Strategy" value={strategyLabel(analysis, strategyName)} />
         </dl>
         {verdict && (
           <div className="flex flex-wrap items-center gap-3">

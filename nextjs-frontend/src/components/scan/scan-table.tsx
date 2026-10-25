@@ -1,4 +1,4 @@
-import { Check, Minus } from 'lucide-react';
+import { Check, Minus, X } from 'lucide-react';
 import { ActionPill } from '@/components/common/action-pill';
 import { ConfidenceBar } from '@/components/common/confidence-bar';
 import { StatusPill, type StatusPillVariant } from '@/components/ui/status-pill';
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import type { AiResultOut } from '@/lib/api/analyse';
 import type { ScanRowOut } from '@/lib/api/scan';
+import { conditionChips, type ConditionLabels } from '@/lib/scan/conditions';
 import { htfAlignment, htfAlignmentLabel, type HtfAlignment } from '@/lib/scan/mtf';
 import { cn } from '@/lib/utils';
 
@@ -122,6 +123,45 @@ function HtfCell({ row }: { row: ScanTableRow }) {
   );
 }
 
+/**
+ * One chip per strategy condition on the row. Met and unmet differ by icon (check / cross) and by
+ * the announced text, not by colour alone.
+ */
+export function ConditionChips({
+  conditions,
+  labels,
+}: {
+  conditions: ScanRowOut['conditions'];
+  labels?: ConditionLabels;
+}) {
+  const chips = conditionChips(conditions, labels);
+  if (chips.length === 0) {
+    return (
+      <span className="text-muted-foreground">
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">No conditions</span>
+      </span>
+    );
+  }
+  return (
+    // role="list": Safari drops list semantics once list-style is removed.
+    <ul role="list" className="flex flex-wrap gap-1" aria-label="Strategy conditions">
+      {chips.map((chip) => (
+        <li key={chip.key} data-met={chip.met}>
+          <StatusPill variant={chip.met ? 'good' : 'neutral'} icon={chip.met ? Check : X}>
+            {chip.label}
+            <span className="sr-only">{chip.met ? ': met' : ': not met'}</span>
+          </StatusPill>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function hasConditions(rows: ReadonlyArray<ScanTableRow>, labels?: ConditionLabels): boolean {
+  return rows.some((row) => conditionChips(row.conditions, labels).length > 0);
+}
+
 function AiCells({ ai }: { ai: AiResultOut | undefined }) {
   const verdict = ai?.verdict ?? null;
   return (
@@ -141,11 +181,15 @@ export function ScanTable({
   rows,
   showAi = false,
   showHtf = false,
+  conditionLabels,
 }: {
   rows: ReadonlyArray<ScanTableRow>;
   showAi?: boolean;
   showHtf?: boolean;
+  /** Condition key -> label from `/config`; unknown keys get a readable fallback. */
+  conditionLabels?: ConditionLabels;
 }) {
+  const showConditions = hasConditions(rows, conditionLabels);
   return (
     <Table stacked>
       <TableCaption>Instruments touching or near a fresh zone, best first</TableCaption>
@@ -167,6 +211,7 @@ export function ScanTable({
           <TableHead numeric>Touches</TableHead>
           <TableHead>Bar</TableHead>
           {showHtf && <TableHead>HTF</TableHead>}
+          {showConditions && <TableHead>Conditions</TableHead>}
           {showAi && (
             <>
               <TableHead>Action</TableHead>
@@ -233,6 +278,11 @@ export function ScanTable({
             {showHtf && (
               <TableCell label="HTF">
                 <HtfCell row={row} />
+              </TableCell>
+            )}
+            {showConditions && (
+              <TableCell label="Conditions">
+                <ConditionChips conditions={row.conditions} labels={conditionLabels} />
               </TableCell>
             )}
             {showAi && <AiCells ai={row.ai} />}

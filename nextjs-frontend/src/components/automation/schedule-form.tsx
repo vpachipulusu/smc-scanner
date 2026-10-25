@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef } from 'react';
 
 import { saveScheduleAction } from '@/app/automation/actions';
 import { MtfOptions } from '@/components/scan/mtf-options';
+import { StrategyPicker } from '@/components/scan/strategy-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,6 +21,7 @@ import {
   type FormValues,
 } from '@/lib/automation/form';
 import { IDLE_FORM_STATE } from '@/lib/automation/state';
+import type { StrategyOption } from '@/lib/scan/strategy-options';
 
 /**
  * Create or edit a schedule. Plain labelled controls in a form, so it works with the keyboard
@@ -31,7 +33,21 @@ const SELECT_CLASSES =
 
 const CHECKBOX_LABEL_CLASSES = 'flex min-h-11 items-center gap-2 text-sm';
 
-export function ScheduleForm({ schedule }: { schedule?: ScheduleOut }) {
+/** The scheduler keeps its own scan tuning (swing 10, near 0.5 ATR); the strategy picks and scores hits. */
+export const SCHEDULE_STRATEGY_HINT =
+  'Picks and scores the hits. Runs keep the default swing length and near distance.';
+
+export function ScheduleForm({
+  schedule,
+  strategies = [],
+  strategiesComplete = true,
+}: {
+  schedule?: ScheduleOut;
+  /** Picker choices (see `strategyOptions`); empty keeps the current strategy as the only one. */
+  strategies?: ReadonlyArray<StrategyOption>;
+  /** False when only /config's built-ins loaded, so unknown slugs are not flagged as deleted. */
+  strategiesComplete?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(saveScheduleAction, IDLE_FORM_STATE);
   const initial: FormValues = schedule ? valuesFromSchedule(schedule) : EMPTY_VALUES;
   const values = state.status === 'error' ? state.values : initial;
@@ -216,6 +232,16 @@ export function ScheduleForm({ schedule }: { schedule?: ScheduleOut }) {
           </p>
           {fieldError('telegram_chat_id')}
         </div>
+        <StrategyPicker
+          key={state.status === 'error' ? JSON.stringify(state.values) : state.status}
+          id="schedule-strategy"
+          name="strategy"
+          options={strategies}
+          complete={strategiesComplete}
+          defaultValue={values.strategy}
+          hint={SCHEDULE_STRATEGY_HINT}
+          error={errors.strategy}
+        />
       </div>
 
       <MtfOptions

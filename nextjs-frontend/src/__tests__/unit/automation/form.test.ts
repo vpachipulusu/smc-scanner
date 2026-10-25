@@ -43,6 +43,7 @@ describe('parseScheduleForm', () => {
         telegram_chat_id: null,
         mtf: false,
         require_htf_aligned: false,
+        strategy: 'smc-default',
       },
     });
   });

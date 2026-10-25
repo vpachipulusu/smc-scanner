@@ -9,7 +9,8 @@ import {
   type AnalyseResponse,
   type AnalysedRowOut,
 } from './generated';
-import { SOURCES, TIMEFRAMES } from '@/lib/scan/params';
+import { DEFAULT_STRATEGY, SOURCES, TIMEFRAMES, isStrategySlug } from '@/lib/scan/params';
+import { checkedConditions } from '@/lib/scan/conditions';
 import type { ScanFailureOut, ScanQuery } from './scan';
 
 /**
@@ -118,6 +119,8 @@ function checkedRow(value: unknown): AnalysedRowOut | null {
     ...(BIASES.includes(value.htf_bias) && {
       htf_bias: value.htf_bias as NonNullable<AnalysedRowOut['htf_bias']>,
     }),
+    ...(isStrategySlug(value.strategy) && { strategy: value.strategy }),
+    ...(isRecord(value.conditions) && { conditions: checkedConditions(value.conditions) }),
     ai: {
       status: ai.status as AiResultOut['status'],
       verdict: checkedVerdict(ai.verdict),
@@ -147,6 +150,7 @@ function checkedResponse(body: unknown): AnalyseResponse | null {
   return {
     source: body.source as AnalyseResponse['source'],
     tf: body.tf as AnalyseResponse['tf'],
+    ...(isStrategySlug(body.strategy) && { strategy: body.strategy }),
     count: rows.length,
     rows,
     failures,
@@ -168,6 +172,7 @@ export async function runAnalyse(query: ScanQuery): Promise<AnalyseResult> {
         all_touches: query.allTouches,
         mtf: query.mtf,
         require_htf_aligned: query.requireHtfAligned,
+        ...(query.strategy !== DEFAULT_STRATEGY && { strategy: query.strategy }),
       },
     });
     response = sdk.response;

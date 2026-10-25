@@ -37,6 +37,7 @@ describe('parseScanParams', () => {
         allTouches: true,
         mtf: false,
         requireHtfAligned: false,
+        strategy: 'smc-default',
       },
       every: 15,
     });
@@ -117,6 +118,7 @@ describe('scanHref', () => {
         allTouches: true,
         mtf: true,
         requireHtfAligned: true,
+        strategy: 'smc-default',
       },
       every: 30,
     };

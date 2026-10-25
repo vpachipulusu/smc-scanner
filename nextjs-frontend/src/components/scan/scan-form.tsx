@@ -3,8 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MtfOptions } from '@/components/scan/mtf-options';
+import { StrategyFields } from '@/components/scan/strategy-fields';
 import type { ConfigResponse } from '@/lib/api/scan';
 import { LIMITS, SOURCES, TIMEFRAMES, scanHref, type ScanPageParams } from '@/lib/scan/params';
+import type { StrategyOption } from '@/lib/scan/strategy-options';
 
 /**
  * A GET form, like the orders filter: submitting navigates to `/scan?...` and the server runs the
@@ -18,9 +20,15 @@ const SELECT_CLASSES =
 export function ScanForm({
   params,
   config,
+  strategies = [],
+  strategiesComplete = true,
 }: {
   params: ScanPageParams;
   config: ConfigResponse | null;
+  /** Picker choices (see `strategyOptions`); empty keeps the current strategy as the only one. */
+  strategies?: ReadonlyArray<StrategyOption>;
+  /** False when only /config's built-ins loaded, so unknown slugs are not flagged as deleted. */
+  strategiesComplete?: boolean;
 }) {
   const { query, every } = params;
   const sources = config?.sources ?? SOURCES;
@@ -94,36 +102,14 @@ export function ScanForm({
             defaultValue={query.bars}
           />
         </div>
-        <div>
-          <Label htmlFor="scan-swing" className="mb-1 block">
-            Swing length
-          </Label>
-          <Input
-            id="scan-swing"
-            name="swing"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={LIMITS.maxSwing}
-            step={1}
-            defaultValue={query.swing}
-          />
-        </div>
-        <div>
-          <Label htmlFor="scan-near" className="mb-1 block">
-            Near (ATR)
-          </Label>
-          <Input
-            id="scan-near"
-            name="near"
-            type="number"
-            inputMode="decimal"
-            min={0}
-            max={LIMITS.maxNear}
-            step={0.1}
-            defaultValue={query.near}
-          />
-        </div>
+        <StrategyFields
+          key={scanHref(params)}
+          options={strategies}
+          complete={strategiesComplete}
+          strategy={query.strategy}
+          swing={query.swing}
+          near={query.near}
+        />
         <div>
           <Label htmlFor="scan-every" className="mb-1 block">
             Rescan every (min)
