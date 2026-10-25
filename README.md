@@ -203,7 +203,9 @@ the symbol's last tick (closed market or dead feed).
 
 ### CSV
 
-Header `time,open,high,low,close[,volume]`, ISO-8601 times, any order (sorted on load).
+Header `time,open,high,low,close[,volume]`, ISO-8601 times, any order (sorted on load). Years of
+history per timeframe can be built from Dukascopy tick exports with `smc-resample-ticks`; see
+[docs/data.md](docs/data.md).
 
 ## Quick start (no terminal, no key)
 
@@ -273,6 +275,7 @@ be escaped by whatever renders it.
 |---|---|
 | Scan engine | `scanner.py`, `structure.py`, `zones.py`, `scoring.py`, `smc_lib.py`, `models.py`, `report.py` |
 | Data sources | `loaders/` (`mt5.py`, `csv_loader.py`, `demo.py`), `watchlist.py` |
+| Data preparation | `data/resample_ticks.py` (`smc-resample-ticks`, tick export to candle CSVs) |
 | CLI | `cli.py`, `ai_cli.py` |
 | AI verdicts | `ai/` (`prompt.py`, `context.py`, `providers.py`, `verdict.py`, `analyst.py`, `store.py`, `budget.py`) |
 | Shared | `config.py`, `ratelimit.py` (API rate limiter) |

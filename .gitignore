@@ -14,3 +14,4 @@ smc.db*
 *.sqlite*
 *.db-wal
 *.db-shm
+/data/

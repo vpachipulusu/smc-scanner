@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 smc-scan = "smc_scanner.cli:main"
+smc-resample-ticks = "smc_scanner.data.resample_ticks:main"
 
 [project.optional-dependencies]
 ai = [
