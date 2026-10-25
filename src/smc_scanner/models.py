@@ -36,6 +36,9 @@ class Structure:
     # Trendline value projected to the latest candle, or None without two swings.
     trendline_bullish: float | None
     trendline_bearish: float | None
+    # Direction of the most recent close-confirmed break of structure; None without one, or
+    # when the scan did not ask for it (``analyse_structure(..., with_bos=True)``).
+    last_bos: Literal["bullish", "bearish"] | None = None
 
 
 @dataclass(frozen=True)
