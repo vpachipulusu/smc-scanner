@@ -9,12 +9,15 @@ from schedule_support import FakeClock
 from smc_scanner.ai.providers import FakeProvider
 from smc_scanner.ai.store import SqliteAnalysisStore
 from smc_scanner.ai_cli import FrameCache
-from smc_scanner.scanner import ScanOptions
 from smc_scanner.schedule.runner import ScanData, default_analyse, make_scan_fn
 from smc_scanner.schedule.store import Schedule
+from smc_scanner.strategy import Strategy
 from smc_scanner.strategy.builtin import SMC_DEFAULT
 
-OPTIONS = ScanOptions(swing_length=SWING)
+# a scheduled scan takes its swing length from the strategy
+SHORT_SWING = Strategy.model_validate(
+    {**SMC_DEFAULT.model_dump(), "slug": "short-swing", "builtin": False, "swing_length": SWING}
+)
 HOLD = '{"action": "HOLD", "confidence": 40, "reasons": ["weak"], "summary": "No edge."}'
 
 
@@ -34,7 +37,7 @@ def _loader(htf_drift: int = 1) -> TfLoader:
 
 
 def _scan(schedule: Schedule, loader: TfLoader) -> ScanData:
-    return make_scan_fn(loader_factory=lambda _: loader, options=OPTIONS)(schedule, SMC_DEFAULT)
+    return make_scan_fn(loader_factory=lambda _: loader)(schedule, SHORT_SWING)
 
 
 def test_scan_without_mtf_keeps_only_the_scan_timeframe() -> None:

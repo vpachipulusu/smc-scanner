@@ -286,27 +286,30 @@ def test_run_fails_when_the_strategy_store_is_broken(tmp_path: Path) -> None:
     assert rec.scans == 0
 
 
-def test_scan_fn_passes_the_schedules_options_and_the_strategy() -> None:
+def test_scan_fn_passes_the_strategys_tuning_and_the_strategy() -> None:
     loader = TfLoader({("EURUSD", "1h"): HIT_FRAME})
-    scan = make_scan_fn(loader_factory=lambda _: loader, options=OPTIONS)
+    scan = make_scan_fn(loader_factory=lambda _: loader)
     schedule = Schedule(
         name="s", source="demo", tf="1h", symbols=("EURUSD",), frequency="1h", min_score=0
     )
+    short = Strategy.model_validate(
+        {**SMC_DEFAULT.model_dump(), "slug": "short", "builtin": False, "swing_length": SWING}
+    )
     ob_only = Strategy.model_validate(
-        {**SMC_DEFAULT.model_dump(), "slug": "ob-only", "zone_kinds": ("OB",), "builtin": False}
+        {**short.model_dump(), "slug": "ob-only", "zone_kinds": ("OB",)}
     )
 
-    default = scan(schedule, SMC_DEFAULT)
+    default = scan(schedule, short)
     filtered = scan(schedule, ob_only)
 
-    assert default.options == OPTIONS and default.strategy == SMC_DEFAULT
+    assert default.options == OPTIONS and default.strategy == short
     assert any(row.zone.endswith("FVG") for row in default.rows)
     assert all(row.zone.endswith("OB") and row.strategy == "ob-only" for row in filtered.rows)
 
 
 def test_scan_fn_turns_mtf_on_for_a_strategy_that_needs_it() -> None:
     loader = TfLoader({("EURUSD", "1h"): HIT_FRAME, ("EURUSD", "4h"): zigzag(1)})
-    scan = make_scan_fn(loader_factory=lambda _: loader, options=OPTIONS)
+    scan = make_scan_fn(loader_factory=lambda _: loader)
     schedule = Schedule(
         name="s", source="demo", tf="1h", symbols=("EURUSD",), frequency="1h", min_score=0
     )
@@ -596,9 +599,15 @@ def test_default_analyse_sends_the_higher_timeframe_for_a_strategy_that_needs_it
         name="s", source="demo", tf="1h", symbols=("EURUSD",), frequency="1h", min_score=0, id=1
     )
     strategy = Strategy.model_validate(
-        {**SMC_DEFAULT.model_dump(), "slug": "with-htf", "mtf": True, "builtin": False}
+        {
+            **SMC_DEFAULT.model_dump(),
+            "slug": "with-htf",
+            "mtf": True,
+            "builtin": False,
+            "swing_length": SWING,
+        }
     )
-    data = make_scan_fn(loader_factory=lambda _: loader, options=OPTIONS)(schedule, strategy)
+    data = make_scan_fn(loader_factory=lambda _: loader)(schedule, strategy)
     provider = FakeProvider([HOLD] * len(data.rows))
 
     default_analyse(data, schedule, provider, SqliteAnalysisStore(tmp_path / "smc.db"), FakeClock())

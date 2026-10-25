@@ -33,9 +33,9 @@ const SELECT_CLASSES =
 
 const CHECKBOX_LABEL_CLASSES = 'flex min-h-11 items-center gap-2 text-sm';
 
-/** The scheduler keeps its own scan tuning (swing 10, near 0.5 ATR); the strategy picks and scores hits. */
+/** Scheduled runs scan with the strategy's swing length and near distance, fresh touches only. */
 export const SCHEDULE_STRATEGY_HINT =
-  'Picks and scores the hits. Runs keep the default swing length and near distance.';
+  "Picks and scores the hits. Runs use the strategy's swing length and near distance (fresh touches only).";
 
 export function ScheduleForm({
   schedule,
