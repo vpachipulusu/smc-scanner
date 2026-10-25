@@ -42,6 +42,15 @@ describe('SiteNav', () => {
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
   });
 
+  it('links Strategies and marks it current on /strategies and below', () => {
+    nav.pathname = '/strategies/my-setup/edit';
+    render(<SiteNav />);
+
+    const link = screen.getByRole('link', { name: 'Strategies' });
+    expect(link).toHaveAttribute('href', '/strategies');
+    expect(link).toHaveAttribute('aria-current', 'page');
+  });
+
   it('marks Settings as current on /settings', () => {
     nav.pathname = '/settings';
     render(<SiteNav />);
@@ -57,6 +66,8 @@ describe('SiteNav', () => {
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: 'Scan' })).toHaveFocus();
+    await userEvent.tab();
+    expect(screen.getByRole('link', { name: 'Strategies' })).toHaveFocus();
     await userEvent.tab();
     expect(screen.getByRole('link', { name: 'Analyses' })).toHaveFocus();
     await userEvent.tab();
