@@ -2,14 +2,17 @@
 
 import { useState } from 'react';
 
+import { VerdictBadge } from '@/components/backtests/verdict-badge';
 import { Label } from '@/components/ui/label';
+import { VERDICT_LABELS, verdictFor, type StrategyVerdicts } from '@/lib/backtests/verdict';
 import { findStrategy, type StrategyOption } from '@/lib/scan/strategy-options';
 
 /**
  * The strategy select shared by the scan form and the schedule form. Built-in and custom
  * strategies are grouped; a slug that is not in the list (a deleted strategy, a hand-edited URL)
  * stays selectable and is flagged so the form never silently swaps it. Hints are linked with
- * `aria-describedby`.
+ * `aria-describedby`. With backtest verdicts, each option names its strategy's verdict in text and
+ * the picked one's badge is shown under the select.
  */
 
 export const STRATEGY_LABEL = 'Strategy';
@@ -38,17 +41,27 @@ type StrategyPickerProps = {
   /** A fixed hint shown first, e.g. what picking does in this form. */
   hint?: string;
   error?: string;
+  /** Latest backtest verdict by slug (read server-side); a slug left out shows none. */
+  verdicts?: StrategyVerdicts;
 };
 
 type Hint = { id: string; text: string; warn?: boolean };
 
-function OptionList({ options }: { options: ReadonlyArray<StrategyOption> }) {
+type OptionListProps = { options: ReadonlyArray<StrategyOption>; verdicts: StrategyVerdicts };
+
+/** An option's text: the name, plus its verdict when known (a native option holds text only). */
+export function optionLabel(option: StrategyOption, verdicts: StrategyVerdicts): string {
+  const verdict = verdictFor(verdicts, option.slug);
+  return verdict ? `${option.name} · ${VERDICT_LABELS[verdict]}` : option.name;
+}
+
+function OptionList({ options, verdicts }: OptionListProps) {
   const builtin = options.filter((option) => option.builtin);
   const custom = options.filter((option) => !option.builtin);
   const items = (list: StrategyOption[]) =>
     list.map((option) => (
       <option key={option.slug} value={option.slug}>
-        {option.name}
+        {optionLabel(option, verdicts)}
       </option>
     ));
   return (
@@ -68,6 +81,7 @@ export function StrategyPicker({
   complete = true,
   hint,
   error,
+  verdicts = {},
 }: StrategyPickerProps) {
   const [value, setValue] = useState(defaultValue);
   const selected = findStrategy(options, value);
@@ -78,6 +92,7 @@ export function StrategyPicker({
     selected?.mtf ? { id: `${id}-mtf-hint`, text: STRATEGY_MTF_HINT } : null,
     missing ? { id: `${id}-missing`, text: STRATEGY_MISSING_HINT, warn: true } : null,
   ].filter((item): item is Hint => item !== null);
+  const selectedVerdict = selected ? verdictFor(verdicts, selected.slug) : undefined;
   const errorId = `${id}-error`;
   const describedBy = [...hints.map((item) => item.id), error ? errorId : null]
     .filter(Boolean)
@@ -103,8 +118,13 @@ export function StrategyPicker({
         {selected === undefined && (
           <option value={value}>{missing ? `${value}${STRATEGY_NOT_FOUND_SUFFIX}` : value}</option>
         )}
-        <OptionList options={options} />
+        <OptionList options={options} verdicts={verdicts} />
       </select>
+      {selectedVerdict && (
+        <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          Latest backtest: <VerdictBadge verdict={selectedVerdict} labelled={false} />
+        </p>
+      )}
       {hints.map((item) => (
         <p key={item.id} id={item.id} className={item.warn ? WARN_HINT_CLASSES : HINT_CLASSES}>
           {item.text}

@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { MtfOptions } from '@/components/scan/mtf-options';
 import { StrategyFields } from '@/components/scan/strategy-fields';
 import type { ConfigResponse } from '@/lib/api/scan';
+import type { StrategyVerdicts } from '@/lib/backtests/verdict';
 import { LIMITS, SOURCES, TIMEFRAMES, scanHref, type ScanPageParams } from '@/lib/scan/params';
 import type { StrategyOption } from '@/lib/scan/strategy-options';
 
@@ -22,6 +23,7 @@ export function ScanForm({
   config,
   strategies = [],
   strategiesComplete = true,
+  strategyVerdicts,
 }: {
   params: ScanPageParams;
   config: ConfigResponse | null;
@@ -29,6 +31,8 @@ export function ScanForm({
   strategies?: ReadonlyArray<StrategyOption>;
   /** False when only /config's built-ins loaded, so unknown slugs are not flagged as deleted. */
   strategiesComplete?: boolean;
+  /** Latest backtest verdict by slug, shown in the picker. */
+  strategyVerdicts?: StrategyVerdicts;
 }) {
   const { query, every } = params;
   const sources = config?.sources ?? SOURCES;
@@ -109,6 +113,7 @@ export function ScanForm({
           strategy={query.strategy}
           swing={query.swing}
           near={query.near}
+          verdicts={strategyVerdicts}
         />
         <div>
           <Label htmlFor="scan-every" className="mb-1 block">

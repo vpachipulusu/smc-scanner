@@ -6,6 +6,7 @@ import { ScanAnalysis } from '@/components/scan/scan-analysis';
 import { ScanFailures } from '@/components/scan/scan-failures';
 import { ScanForm } from '@/components/scan/scan-form';
 import { ScanLoadError } from '@/components/scan/scan-load-error';
+import { fetchBacktestVerdicts } from '@/lib/api/backtests';
 import { fetchScan, fetchScanConfig, scanErrorMessage, type ScanResponse } from '@/lib/api/scan';
 import { fetchStrategies } from '@/lib/api/strategies';
 import { aiAvailable } from '@/lib/scan/analyse-state';
@@ -57,13 +58,20 @@ export default async function ScanPage({ searchParams }: { searchParams: SearchP
   const configPromise = fetchScanConfig();
   // Only a deep link waits for /config before scanning; every other scan runs in parallel.
   const paramsPromise = resolveParams(parsed, raw, configPromise);
-  const [configResult, strategiesResult, [params, scanResult]] = await Promise.all([
-    configPromise,
-    fetchStrategies(),
-    paramsPromise.then(async (resolved) => [resolved, await fetchScan(resolved.query)] as const),
-  ]);
+  const strategiesPromise = fetchStrategies();
+  // The picker's verdict badges need only the strategy list, so they load beside the scan.
+  const optionsPromise = Promise.all([configPromise, strategiesPromise]).then(([c, s]) =>
+    strategyOptions(c.success ? c.data : null, s.success ? s.data : null)
+  );
+  const [configResult, strategiesResult, options, verdicts, [params, scanResult]] =
+    await Promise.all([
+      configPromise,
+      strategiesPromise,
+      optionsPromise,
+      optionsPromise.then((list) => fetchBacktestVerdicts(list.map((option) => option.slug))),
+      paramsPromise.then(async (resolved) => [resolved, await fetchScan(resolved.query)] as const),
+    ]);
   const config = configResult.success ? configResult.data : null;
-  const options = strategyOptions(config, strategiesResult.success ? strategiesResult.data : null);
   const scannedAt = new Date().toISOString();
   const retryHref = scanHref(params);
 
@@ -83,6 +91,7 @@ export default async function ScanPage({ searchParams }: { searchParams: SearchP
             config={config}
             strategies={options}
             strategiesComplete={strategiesResult.success}
+            strategyVerdicts={verdicts}
           />
           <AutoRefresh
             everyMinutes={params.every}

@@ -6,6 +6,7 @@ import { StrategyPicker } from '@/components/scan/strategy-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LIMITS } from '@/lib/scan/params';
+import type { StrategyVerdicts } from '@/lib/backtests/verdict';
 import type { StrategyOption } from '@/lib/scan/strategy-options';
 
 /**
@@ -23,9 +24,18 @@ type StrategyFieldsProps = {
   strategy: string;
   swing: number;
   near: number;
+  /** Latest backtest verdict by slug, shown in the picker. */
+  verdicts?: StrategyVerdicts;
 };
 
-export function StrategyFields({ options, complete, strategy, swing, near }: StrategyFieldsProps) {
+export function StrategyFields({
+  options,
+  complete,
+  strategy,
+  swing,
+  near,
+  verdicts,
+}: StrategyFieldsProps) {
   const [swingValue, setSwingValue] = useState(String(swing));
   const [nearValue, setNearValue] = useState(String(near));
 
@@ -36,6 +46,7 @@ export function StrategyFields({ options, complete, strategy, swing, near }: Str
         name="strategy"
         options={options}
         complete={complete}
+        verdicts={verdicts}
         defaultValue={strategy}
         hint={STRATEGY_PREFILL_HINT}
         onSelect={(option) => {

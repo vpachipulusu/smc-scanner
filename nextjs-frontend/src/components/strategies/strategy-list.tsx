@@ -1,15 +1,25 @@
+import Link from 'next/link';
 import { Lock } from 'lucide-react';
 
+import { VerdictBadge } from '@/components/backtests/verdict-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusPill } from '@/components/ui/status-pill';
 import type { StrategyOut } from '@/lib/api/strategies-write';
+import { backtestHref } from '@/lib/backtests/routes';
+import {
+  VERDICT_LABELS,
+  verdictFor,
+  type StrategyVerdicts,
+  type VerdictKey,
+} from '@/lib/backtests/verdict';
 import type { ConditionInfo } from '@/lib/strategies/catalogue';
 import { describeCondition, describeScoring, describeTuning } from '@/lib/strategies/format';
 import { StrategyActions } from './strategy-actions';
 
 /**
  * The strategies on the list page: built-ins (read-only, marked with a badge) and then the custom
- * ones, each with its tuning, its required and scored conditions and its actions.
+ * ones, each with its tuning, its required and scored conditions and its actions. A strategy's
+ * latest backtest verdict links to its backtest page; without a known verdict there is no badge.
  */
 
 type ConditionsProps = {
@@ -37,9 +47,13 @@ function Conditions({ title, refs, catalogue }: ConditionsProps) {
   );
 }
 
-type StrategyCardProps = { strategy: StrategyOut; catalogue: readonly ConditionInfo[] };
+type StrategyCardProps = {
+  strategy: StrategyOut;
+  catalogue: readonly ConditionInfo[];
+  verdict?: VerdictKey;
+};
 
-export function StrategyCard({ strategy, catalogue }: StrategyCardProps) {
+export function StrategyCard({ strategy, catalogue, verdict }: StrategyCardProps) {
   const headingId = `strategy-${strategy.slug}-title`;
   return (
     <Card aria-labelledby={headingId} role="article" className="flex flex-col">
@@ -52,6 +66,15 @@ export function StrategyCard({ strategy, catalogue }: StrategyCardProps) {
             <StatusPill variant="info" icon={Lock}>
               Built-in, read-only
             </StatusPill>
+          )}
+          {verdict && (
+            <Link
+              href={backtestHref(strategy.slug)}
+              aria-label={`Backtest results of ${strategy.name}: ${VERDICT_LABELS[verdict]}`}
+              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <VerdictBadge verdict={verdict} />
+            </Link>
           )}
         </div>
         <p className="font-mono text-xs text-muted-foreground">{strategy.slug}</p>
@@ -78,9 +101,10 @@ export function StrategyCard({ strategy, catalogue }: StrategyCardProps) {
 type StrategyListProps = {
   strategies: readonly StrategyOut[];
   catalogue: readonly ConditionInfo[];
+  verdicts?: StrategyVerdicts;
 };
 
-export function StrategyList({ strategies, catalogue }: StrategyListProps) {
+export function StrategyList({ strategies, catalogue, verdicts = {} }: StrategyListProps) {
   const builtins = strategies.filter((strategy) => strategy.builtin);
   const custom = strategies.filter((strategy) => !strategy.builtin);
   return (
@@ -96,7 +120,12 @@ export function StrategyList({ strategies, catalogue }: StrategyListProps) {
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {custom.map((strategy) => (
-              <StrategyCard key={strategy.slug} strategy={strategy} catalogue={catalogue} />
+              <StrategyCard
+                key={strategy.slug}
+                strategy={strategy}
+                catalogue={catalogue}
+                verdict={verdictFor(verdicts, strategy.slug)}
+              />
             ))}
           </div>
         )}
@@ -107,7 +136,12 @@ export function StrategyList({ strategies, catalogue }: StrategyListProps) {
         </h2>
         <div className="grid gap-4 lg:grid-cols-2">
           {builtins.map((strategy) => (
-            <StrategyCard key={strategy.slug} strategy={strategy} catalogue={catalogue} />
+            <StrategyCard
+              key={strategy.slug}
+              strategy={strategy}
+              catalogue={catalogue}
+              verdict={verdictFor(verdicts, strategy.slug)}
+            />
           ))}
         </div>
       </section>

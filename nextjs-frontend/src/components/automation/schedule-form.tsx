@@ -21,6 +21,7 @@ import {
   type FormValues,
 } from '@/lib/automation/form';
 import { IDLE_FORM_STATE } from '@/lib/automation/state';
+import type { StrategyVerdicts } from '@/lib/backtests/verdict';
 import type { StrategyOption } from '@/lib/scan/strategy-options';
 
 /**
@@ -41,12 +42,15 @@ export function ScheduleForm({
   schedule,
   strategies = [],
   strategiesComplete = true,
+  strategyVerdicts,
 }: {
   schedule?: ScheduleOut;
   /** Picker choices (see `strategyOptions`); empty keeps the current strategy as the only one. */
   strategies?: ReadonlyArray<StrategyOption>;
   /** False when only /config's built-ins loaded, so unknown slugs are not flagged as deleted. */
   strategiesComplete?: boolean;
+  /** Latest backtest verdict by slug, shown in the picker. */
+  strategyVerdicts?: StrategyVerdicts;
 }) {
   const [state, formAction, pending] = useActionState(saveScheduleAction, IDLE_FORM_STATE);
   const initial: FormValues = schedule ? valuesFromSchedule(schedule) : EMPTY_VALUES;
@@ -241,6 +245,7 @@ export function ScheduleForm({
           defaultValue={values.strategy}
           hint={SCHEDULE_STRATEGY_HINT}
           error={errors.strategy}
+          verdicts={strategyVerdicts}
         />
       </div>
 
