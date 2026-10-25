@@ -1,12 +1,14 @@
 """run_schedule: rules, dedupe, lock discipline, overlap guard and failure isolation."""
 
 import threading
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 from conftest import FLAT, FVG_SETUP, TOUCH_LAST, frame
+from mtf_support import TfLoader
 from schedule_support import (
     T0,
     FakeClock,
@@ -22,14 +24,24 @@ from smc_scanner.ai.providers import AiError
 from smc_scanner.ai.providers import FakeProvider as ReplayProvider
 from smc_scanner.ai.store import StoreError
 from smc_scanner.ai.verdict import AiVerdict
+from smc_scanner.loaders.base import Loader
 from smc_scanner.models import ScanRow
 from smc_scanner.notify.telegram import SendResult
-from smc_scanner.scanner import ScanOptions, scan_instrument
+from smc_scanner.scanner import ScanOptions, ScanResult, scan_instrument
+from smc_scanner.schedule import runner
 from smc_scanner.schedule.rules import SKIP_HOLD, SKIP_LOW_CONFIDENCE, SKIP_UNCHANGED
-from smc_scanner.schedule.runner import RunDeps, RunGuard, ScanData, default_analyse, run_schedule
+from smc_scanner.schedule.runner import (
+    RunDeps,
+    RunGuard,
+    ScanData,
+    default_analyse,
+    make_scan_fn,
+    run_schedule,
+)
 from smc_scanner.schedule.store import AlertKey, Schedule, SqliteScheduleRepository
 from smc_scanner.schedule.timing import GRACE, next_run_after
 from smc_scanner.strategy import Strategy
+from smc_scanner.strategy.builtin import SMC_DEFAULT
 
 
 def test_delivers_a_signal_and_schedules_the_next_run(tmp_path: Path) -> None:
@@ -489,3 +501,95 @@ def test_stop_event_ends_the_wait_for_the_scan_lock(tmp_path: Path) -> None:
 
     assert report.status == "stopped"
     assert rec.scans == 0
+
+
+# --- the scan tuning comes from the schedule's strategy ------------------------------
+
+WIDE = Strategy.model_validate(
+    {
+        **SMC_DEFAULT.model_dump(),
+        "slug": "wide",
+        "builtin": False,
+        "swing_length": 20,
+        "near_atr": 1.0,
+    }
+)
+SCHEDULE = Schedule(name="s", source="demo", tf="1h", symbols=("EURUSD",), frequency="1h")
+
+
+class _ScanSpy:
+    """Stands in for ``run_scan_with_strategy``: records what it was given, returns one hit."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Strategy, ScanOptions]] = []
+
+    def __call__(
+        self,
+        loader: Loader,
+        symbols: Iterable[str],
+        timeframe: str,
+        bars: int,
+        strategy: Strategy | None = None,
+        *,
+        options: ScanOptions | None = None,
+        **kwargs: object,
+    ) -> ScanResult:
+        assert strategy is not None and options is not None
+        self.calls.append((strategy, options))
+        return ScanResult(rows=(make_row(),), failures=(), scanned=1)
+
+
+@pytest.fixture
+def scan_spy(monkeypatch: pytest.MonkeyPatch) -> _ScanSpy:
+    spy = _ScanSpy()
+    monkeypatch.setattr(runner, "run_scan_with_strategy", spy)
+    return spy
+
+
+def _scan_fn(options: ScanOptions | None = None) -> runner.ScanFn:
+    return make_scan_fn(loader_factory=lambda _: TfLoader({}), options=options)
+
+
+def test_scan_uses_the_strategys_swing_and_near_with_fresh_touches_only(
+    scan_spy: _ScanSpy,
+) -> None:
+    data = _scan_fn()(SCHEDULE, WIDE)
+
+    used = ScanOptions(swing_length=20, near_atr=1.0, all_touches=False)
+    assert scan_spy.calls == [(WIDE, used)]
+    assert data.options == used  # the AI hit source rebuilds the hit with these
+
+
+def test_smc_default_scan_keeps_todays_tuning(scan_spy: _ScanSpy) -> None:
+    data = _scan_fn()(SCHEDULE, SMC_DEFAULT)
+
+    today = ScanOptions(swing_length=10, near_atr=0.5, all_touches=False)
+    assert scan_spy.calls == [(SMC_DEFAULT, today)]
+    assert data.options == today == ScanOptions()
+
+
+def test_all_touches_still_comes_from_the_scan_fn_options(scan_spy: _ScanSpy) -> None:
+    data = _scan_fn(ScanOptions(swing_length=3, near_atr=2.0, all_touches=True))(SCHEDULE, WIDE)
+
+    assert data.options == ScanOptions(swing_length=20, near_atr=1.0, all_touches=True)
+    assert scan_spy.calls[0][1] == data.options
+
+
+def test_unusable_strategy_falls_back_to_the_default_tuning(
+    tmp_path: Path, scan_spy: _ScanSpy
+) -> None:
+    deps, _, repo = build_deps(tmp_path)
+    seen: list[ScanData] = []
+
+    def analyse(data: ScanData, *_: object) -> list[AnalysisResult]:
+        seen.append(data)
+        return []
+
+    deps = replace(deps, scan=_scan_fn(), analyse=analyse)
+
+    run_schedule(stored_schedule(repo, strategy="deleted"), deps)
+
+    [(strategy, used)] = scan_spy.calls
+    assert strategy.slug == SMC_DEFAULT.slug
+    assert used == ScanOptions()
+    assert [data.options for data in seen] == [used]

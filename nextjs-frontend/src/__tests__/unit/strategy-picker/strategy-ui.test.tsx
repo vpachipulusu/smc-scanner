@@ -154,6 +154,7 @@ describe('ScheduleForm strategy', () => {
     expect(select).toHaveValue('my-setup');
     expect(select).toHaveAttribute('name', 'strategy');
     expect(screen.getByText(SCHEDULE_STRATEGY_HINT)).toBeInTheDocument();
+    expect(SCHEDULE_STRATEGY_HINT).toMatch(/strategy's swing length and near distance/);
   });
 
   it('defaults a new schedule to smc-default and shows the MTF hint when picked', async () => {

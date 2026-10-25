@@ -115,7 +115,8 @@ class ScanLock(Protocol):
 
 @dataclass(frozen=True)
 class ScanData:
-    """What a scan hands to the analyst: hit rows, the frames they came from, the options."""
+    """What a scan hands to the analyst: hit rows, the frames they came from, the options the
+    scan used (the hit source rebuilds each hit with them)."""
 
     rows: tuple[ScanRow, ...]
     frames: Mapping[str, pd.DataFrame]
@@ -246,10 +247,13 @@ def make_scan_fn(
     options: ScanOptions | None = None,
 ) -> ScanFn:
     """A scan over closed bars only (``make_loader`` defaults to ``closed_only=True``), through
-    the schedule's strategy. The scan tuning is ``options``, whatever the strategy's own is."""
+    the schedule's strategy, with that strategy's swing length and near distance. Only
+    ``all_touches`` comes from ``options`` (default fresh touches only; its swing and near are
+    ignored), not from the strategy, so a ``smc-default`` schedule keeps today's rows."""
     chosen = options or ScanOptions()
 
     def scan(schedule: Schedule, strategy: Strategy) -> ScanData:
+        used = replace(chosen, swing_length=strategy.swing_length, near_atr=strategy.near_atr)
         cache = FrameCache(loader_factory(schedule.source))
         result = run_scan_with_strategy(
             cache,
@@ -257,7 +261,7 @@ def make_scan_fn(
             schedule.tf,
             bars,
             strategy,
-            options=chosen,
+            options=used,
             mtf=schedule.mtf,
             require_htf_aligned=schedule.require_htf_aligned,
             ltf_min_score=schedule.min_score,
@@ -267,7 +271,7 @@ def make_scan_fn(
         return ScanData(
             rows=result.rows,
             frames=dict(cache.frames),
-            options=chosen,
+            options=used,
             all_frames=dict(cache.frames_by_timeframe),
             strategy=strategy,
         )
