@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
+from smc_scanner import rstats
 from smc_scanner.journal.models import JournalEntryOut
 
 
@@ -49,26 +50,18 @@ def _closed_rs(entries: Iterable[JournalEntryOut]) -> list[float]:
     return [r for r in map(r_multiple, entries) if r is not None]
 
 
-def _mean(values: list[float]) -> float | None:
-    return math.fsum(values) / len(values) if values else None
-
-
 def win_rate(entries: Iterable[JournalEntryOut]) -> float | None:
     """Share of closed trades with R above zero (breakeven is not a win)."""
-    rs = _closed_rs(entries)
-    return sum(r > 0 for r in rs) / len(rs) if rs else None
+    return rstats.hit_rate(_closed_rs(entries))
 
 
 def average_r(entries: Iterable[JournalEntryOut]) -> float | None:
-    return _mean(_closed_rs(entries))
+    return rstats.mean(_closed_rs(entries))
 
 
 def expectancy(entries: Iterable[JournalEntryOut]) -> float | None:
-    """Expected R per trade: win rate x average win + loss rate x average loss.
-
-    Breakeven trades add zero, so this equals ``average_r``; it keeps its own name because
-    traders look for it."""
-    return average_r(entries)
+    """Expected R per trade (``rstats.expectancy``); equals ``average_r``."""
+    return rstats.expectancy(_closed_rs(entries))
 
 
 def cumulative_r(entries: Iterable[JournalEntryOut]) -> list[CumulativePoint]:
@@ -98,10 +91,10 @@ def summarize(entries: Iterable[JournalEntryOut]) -> JournalStats:
         wins=len(wins),
         losses=len(losses),
         breakeven=len(rs) - len(wins) - len(losses),
-        win_rate=len(wins) / len(rs) if rs else None,
-        average_r=_mean(rs),
-        avg_win_r=_mean(wins),
-        avg_loss_r=_mean(losses),
-        expectancy=expectancy(items),
+        win_rate=rstats.hit_rate(rs),
+        average_r=rstats.mean(rs),
+        avg_win_r=rstats.mean(wins),
+        avg_loss_r=rstats.mean(losses),
+        expectancy=rstats.expectancy(rs),
         total_r=math.fsum(rs),
     )
