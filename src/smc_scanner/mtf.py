@@ -11,13 +11,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final, Literal
 
-import numpy as np
 import pandas as pd
 
 from smc_scanner.config import neighbour_timeframes
 from smc_scanner.models import Bias, ScanRow
-from smc_scanner.smc_lib import smc
-from smc_scanner.structure import bias_from_swings, confirmed_swing_frame, confirmed_swings
+from smc_scanner.structure import bias_from_swings, confirmed_swings, last_break_of_structure
 
 log = logging.getLogger(__name__)
 
@@ -66,21 +64,13 @@ def htf_allows(row: ScanRow, bias: Bias | None) -> bool:
 
 
 def _last_bos(ohlc: pd.DataFrame, swing_length: int) -> LastBos | None:
-    swings = confirmed_swings(ohlc, swing_length)
-    if not swings:
+    found = last_break_of_structure(ohlc, confirmed_swings(ohlc, swing_length))
+    if found is None:
         return None
-    frame = smc.bos_choch(ohlc, confirmed_swing_frame(ohlc, swings), close_break=True)
-    broken = frame["BrokenIndex"].to_numpy(dtype=float)
-    kind = frame["BOS"].to_numpy(dtype=float)
-    reached = ~np.isnan(kind) & ~np.isnan(broken) & (broken > 0) & (broken < len(ohlc))
-    candidates = np.flatnonzero(reached)
-    if candidates.size == 0:
-        return None
-    position = int(candidates[np.argmax(broken[candidates])])
     return LastBos(
-        direction="bullish" if kind[position] > 0 else "bearish",
-        level=float(frame["Level"].iloc[position]),
-        time=pd.Timestamp(ohlc["time"].iloc[int(broken[position])]).isoformat(),
+        direction=found.direction,
+        level=found.level,
+        time=pd.Timestamp(ohlc["time"].iloc[found.index]).isoformat(),
     )
 
 

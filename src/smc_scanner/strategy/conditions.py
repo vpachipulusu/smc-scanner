@@ -90,6 +90,16 @@ class BiasParams(_Params):
     bias: Bias
 
 
+MAX_DISPLACEMENT_BARS: Final = 5
+DEFAULT_DISPLACEMENT_BARS: Final = 3
+
+
+class DisplacementFvgParams(_Params):
+    within_bars: int = Field(
+        default=DEFAULT_DISPLACEMENT_BARS, strict=True, ge=1, le=MAX_DISPLACEMENT_BARS
+    )
+
+
 @runtime_checkable
 class Condition(Protocol):
     """A condition bound to validated parameters, ready to evaluate zones."""
@@ -158,6 +168,44 @@ def _max_zone_age(ctx: ZoneContext, params: MaxZoneAgeParams) -> bool:
     return ctx.last_index - ctx.state.zone.formed_index <= params.bars
 
 
+def _ob_swept_prior(ctx: ZoneContext, _: NoParams) -> bool:
+    """The zone's candle took the previous candle's low (bullish) or high (bearish).
+
+    Meant for order blocks; for an FVG ``formed_index`` is its middle candle, which is then
+    the candle checked.
+    """
+    formed = ctx.state.zone.formed_index
+    if formed <= 0:
+        return False
+    if ctx.state.zone.direction == BULLISH:
+        low = ctx.ohlc["low"]
+        return bool(low.iloc[formed] < low.iloc[formed - 1])
+    high = ctx.ohlc["high"]
+    return bool(high.iloc[formed] > high.iloc[formed - 1])
+
+
+def _displacement_fvg(ctx: ZoneContext, params: DisplacementFvgParams) -> bool:
+    """A valid same-direction FVG whose middle candle is 1 to ``within_bars`` candles after the
+    zone's candle, so its first candle is the block or a later candle (not checked to be inside
+    the block). The FVG itself proves the candle after its middle one did not re-enter that first
+    candle. ``ctx.valid`` drops FVGs that were traded through, and the candle that trades through
+    a gap sitting on the block also touches the block: pair this with ``fresh``."""
+    zone = ctx.state.zone
+    first, last = zone.formed_index + 1, zone.formed_index + params.within_bars
+    return any(
+        other.zone.kind == "FVG"
+        and other.zone.direction == zone.direction
+        and first <= other.zone.formed_index <= last
+        for other in ctx.valid
+    )
+
+
+def _bos_confirmed(ctx: ZoneContext, _: NoParams) -> bool:
+    """The scan frame's most recent break of structure points the zone's way; none fails.
+    Frame-wide: the break is not tied to the zone, so it may predate the block."""
+    return ctx.structure.last_bos == _direction(ctx)
+
+
 _DEFINITIONS: Final[tuple[_Definition[Any], ...]] = (
     _Definition(
         "aligned",
@@ -210,6 +258,16 @@ _DEFINITIONS: Final[tuple[_Definition[Any], ...]] = (
         lambda ctx, p: ctx.structure.bias == p.bias,
     ),
     _Definition("htf_aligned", "Higher timeframe confirms the direction", NoParams, _htf_aligned),
+    _Definition("ob_swept_prior", "Block candle swept the prior candle", NoParams, _ob_swept_prior),
+    _Definition(
+        "displacement_fvg",
+        "FVG left within N bars after the zone",
+        DisplacementFvgParams,
+        _displacement_fvg,
+    ),
+    _Definition(
+        "bos_confirmed", "Last break of structure is with the zone", NoParams, _bos_confirmed
+    ),
 )
 
 _REGISTRY: Final[Mapping[str, _Definition[Any]]] = MappingProxyType(

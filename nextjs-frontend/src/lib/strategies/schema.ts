@@ -28,6 +28,7 @@ export const BUILTIN_SLUGS = [
   'fresh-ob-trend',
   'fvg-ote-reversal',
   'htf-aligned-touch',
+  'valid-ob',
 ] as const;
 
 export const DEFAULT_SWING_LENGTH = 10;

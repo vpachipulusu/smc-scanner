@@ -85,6 +85,31 @@ describe('catalogue', () => {
     expect(paramFieldsFromSchema(schema)).toBeNull();
   });
 
+  it('reads an optional integer with a default (displacement_fvg)', () => {
+    const fields = paramFieldsFromSchema({
+      additionalProperties: false,
+      properties: {
+        within_bars: { default: 3, maximum: 5, minimum: 1, title: 'Within Bars', type: 'integer' },
+      },
+      title: 'DisplacementFvgParams',
+      type: 'object',
+    });
+    expect(fields).toEqual([
+      {
+        name: 'within_bars',
+        label: 'Within Bars',
+        required: false,
+        kind: 'integer',
+        min: 1,
+        max: 5,
+        defaultValue: 3,
+      },
+    ]);
+    const [within] = fields ?? [];
+    expect(within && parseParam(within, '4')).toEqual({ value: 4 });
+    expect(within && parseParam(within, '6').error).toBe('Enter a whole number from 1 to 5.');
+  });
+
   it('accepts a schema without properties', () => {
     expect(paramFieldsFromSchema({ type: 'object' })).toEqual([]);
   });

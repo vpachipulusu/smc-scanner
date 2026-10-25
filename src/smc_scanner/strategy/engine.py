@@ -29,6 +29,7 @@ from smc_scanner.strategy.conditions import Condition, resolve_all
 from smc_scanner.strategy.models import Strategy
 
 _HTF_KEY: Final = "htf_aligned"
+_BOS_KEY: Final = "bos_confirmed"
 
 
 @dataclass(frozen=True)
@@ -39,14 +40,17 @@ class _Plan:
     required: tuple[Condition, ...]
     scored: tuple[Condition, ...]
     needs_htf: bool  # a condition reads the higher-timeframe bias
+    needs_bos: bool  # a condition reads the last break of structure (costly, so only then)
 
 
 def _plan(strategy: Strategy) -> _Plan:
+    keys = strategy.condition_keys()
     return _Plan(
         strategy,
         resolve_all(strategy.require),
         resolve_all(strategy.score),
-        needs_htf=_HTF_KEY in strategy.condition_keys(),
+        needs_htf=_HTF_KEY in keys,
+        needs_bos=_BOS_KEY in keys,
     )
 
 
@@ -107,14 +111,16 @@ def scan_instrument_with_strategy(
     ``htf_bias`` is the caller's: None makes ``htf_aligned`` pass."""
     chosen = strategy or SMC_DEFAULT
     plan = _plan(chosen)
-    contexts = zone_contexts(symbol, ohlc, _scan_options(chosen, options), htf_bias)
+    contexts = zone_contexts(
+        symbol, ohlc, _scan_options(chosen, options), htf_bias, with_bos=plan.needs_bos
+    )
     price, bar_time = latest_bar(ohlc)
     return _apply(contexts, plan, symbol, price, bar_time)
 
 
 def _producer(plan: _Plan, options: ScanOptions) -> RowProducer:
     def produce(symbol: str, ohlc: pd.DataFrame, htf: HtfLookup) -> list[ScanRow]:
-        contexts = zone_contexts(symbol, ohlc, options)
+        contexts = zone_contexts(symbol, ohlc, options, with_bos=plan.needs_bos)
         if contexts and plan.needs_htf:  # otherwise the scanner loads it only for hits
             bias = htf()
             contexts = tuple(replace(ctx, htf_bias=bias) for ctx in contexts)
