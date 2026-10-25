@@ -54,6 +54,7 @@ const QUERY: ScanQuery = {
   allTouches: true,
   mtf: true,
   requireHtfAligned: true,
+  strategy: 'smc-default',
 };
 
 describe('fetchScan', () => {

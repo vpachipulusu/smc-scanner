@@ -16,6 +16,7 @@ import {
   type ScheduleOut,
   type ScheduleUpdate,
 } from './generated';
+import { isStrategySlug } from '@/lib/scan/params';
 
 /**
  * Server-only calls to the schedule endpoints. Callers import these instead of the generated SDK.
@@ -60,6 +61,7 @@ function isSchedule(body: unknown): body is ScheduleOut {
     isNullableString(body.telegram_chat_id) &&
     typeof body.mtf === 'boolean' &&
     typeof body.require_htf_aligned === 'boolean' &&
+    (body.strategy === undefined || isStrategySlug(body.strategy)) &&
     isNullableString(body.last_run_at) &&
     isNullableString(body.next_run_at)
   );

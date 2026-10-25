@@ -20,6 +20,15 @@ export const LIMITS = {
   maxEvery: 1440,
 } as const;
 
+/** The API's strategy when a request names none; built-ins can never be deleted. */
+export const DEFAULT_STRATEGY = 'smc-default';
+/** The API's slug rule (`SLUG_REGEX`): lower-case letters, digits and hyphens, 32 at most. */
+export const STRATEGY_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+export function isStrategySlug(value: unknown): value is string {
+  return typeof value === 'string' && STRATEGY_SLUG_PATTERN.test(value);
+}
+
 export const DEFAULTS: ScanQuery = {
   source: 'mt5',
   tf: '1h',
@@ -30,6 +39,7 @@ export const DEFAULTS: ScanQuery = {
   allTouches: false,
   mtf: false,
   requireHtfAligned: false,
+  strategy: DEFAULT_STRATEGY,
 };
 
 export const SYMBOL_PATTERN = /^[A-Za-z0-9._#@-]{1,32}$/;
@@ -72,6 +82,7 @@ const schema = z.object({
   swing: z.coerce.number().int().min(1).max(LIMITS.maxSwing).catch(DEFAULTS.swing),
   near: z.coerce.number().finite().min(0).max(LIMITS.maxNear).catch(DEFAULTS.near),
   every: z.coerce.number().int().min(0).max(LIMITS.maxEvery).catch(0),
+  strategy: z.string().regex(STRATEGY_SLUG_PATTERN).catch(DEFAULT_STRATEGY),
 });
 
 export function parseScanParams(raw: RawScanParams): ScanPageParams {
@@ -82,6 +93,7 @@ export function parseScanParams(raw: RawScanParams): ScanPageParams {
     swing: first(raw.swing) ?? DEFAULTS.swing,
     near: first(raw.near) ?? DEFAULTS.near,
     every: first(raw.every) ?? 0,
+    strategy: first(raw.strategy) ?? DEFAULT_STRATEGY,
   });
   const all = first(raw.all);
   const mtf = isTruthy(first(raw.mtf));
@@ -97,26 +109,61 @@ export function parseScanParams(raw: RawScanParams): ScanPageParams {
       mtf,
       // Alignment needs the higher timeframe, so it only counts with mtf (the API 422s otherwise).
       requireHtfAligned: mtf && isTruthy(first(raw.htf)),
+      strategy: parsed.strategy,
     },
     every: parsed.every,
   };
 }
 
-/** Query string for the page and the CSV route; defaults are left out to keep URLs short. */
+/**
+ * Query string for the page and the CSV route; defaults are left out to keep URLs short. With a
+ * non-default strategy, swing and near are always written: the page fills absent ones from the
+ * strategy (see `withStrategyTuning`), so a value equal to the global default must stay explicit.
+ */
 export function scanSearchParams(params: ScanPageParams): URLSearchParams {
   const { query, every } = params;
   const out = new URLSearchParams();
+  const customStrategy = query.strategy !== DEFAULT_STRATEGY;
   if (query.source !== DEFAULTS.source) out.set('source', query.source);
   if (query.tf !== DEFAULTS.tf) out.set('tf', query.tf);
+  if (customStrategy) out.set('strategy', query.strategy);
   if (query.symbols.length > 0) out.set('symbols', query.symbols.join(','));
   if (query.bars !== DEFAULTS.bars) out.set('bars', String(query.bars));
-  if (query.swing !== DEFAULTS.swing) out.set('swing', String(query.swing));
-  if (query.near !== DEFAULTS.near) out.set('near', String(query.near));
+  if (customStrategy || query.swing !== DEFAULTS.swing) out.set('swing', String(query.swing));
+  if (customStrategy || query.near !== DEFAULTS.near) out.set('near', String(query.near));
   if (query.allTouches) out.set('all', '1');
   if (query.mtf) out.set('mtf', '1');
   if (query.mtf && query.requireHtfAligned) out.set('htf', '1');
   if (every > 0) out.set('every', String(every));
   return out;
+}
+
+/** Whether the URL set this tuning field itself (a cleared field counts as unset). */
+export function hasParam(raw: RawScanParams, key: 'swing' | 'near'): boolean {
+  return first(raw[key]) !== undefined;
+}
+
+/**
+ * Fills swing and near from the chosen strategy when the URL leaves them out (a `/scan?strategy=`
+ * deep link), validated like URL values (out of range falls back to the default). The request's
+ * own values always win, as in the API.
+ */
+export function withStrategyTuning(
+  params: ScanPageParams,
+  raw: RawScanParams,
+  summary: { swingLength: number; nearAtr: number } | undefined
+): ScanPageParams {
+  if (!summary) return params;
+  const swing = schema.shape.swing.parse(summary.swingLength);
+  const near = schema.shape.near.parse(summary.nearAtr);
+  return {
+    ...params,
+    query: {
+      ...params.query,
+      swing: hasParam(raw, 'swing') ? params.query.swing : swing,
+      near: hasParam(raw, 'near') ? params.query.near : near,
+    },
+  };
 }
 
 export function scanHref(params: ScanPageParams, path = '/scan'): string {

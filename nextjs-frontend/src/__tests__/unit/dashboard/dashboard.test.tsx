@@ -45,6 +45,7 @@ describe('Dashboard page', () => {
       allTouches: false,
       mtf: false,
       requireHtfAligned: false,
+      strategy: 'smc-default',
     });
   });
 

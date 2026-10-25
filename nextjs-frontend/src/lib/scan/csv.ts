@@ -1,4 +1,5 @@
 import type { ScanRowOut } from '@/lib/api/scan';
+import { DEFAULT_STRATEGY } from '@/lib/scan/params';
 
 /**
  * CSV with the same columns, order and boolean spelling as the CLI's `scan_results.csv`, so a
@@ -43,10 +44,12 @@ export function rowsToCsv(rows: ReadonlyArray<ScanRowOut>): string {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-export function csvFileName(source: string, tf: string, at: Date): string {
+/** The strategy slug (already validated by the params parser) is named unless it is the default. */
+export function csvFileName(source: string, tf: string, at: Date, strategy?: string): string {
   const stamp = at
     .toISOString()
     .replace(/[-:]/g, '')
     .replace(/\.\d{3}Z$/, 'Z');
-  return `smc-scan-${source}-${tf}-${stamp}.csv`;
+  const named = strategy && strategy !== DEFAULT_STRATEGY ? `-${strategy}` : '';
+  return `smc-scan-${source}-${tf}${named}-${stamp}.csv`;
 }

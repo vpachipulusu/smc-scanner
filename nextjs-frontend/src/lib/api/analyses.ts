@@ -49,6 +49,7 @@ function isAnalysis(body: unknown): body is AnalysisOut {
     typeof body.tf === 'string' &&
     typeof body.created_at === 'string' &&
     (body.status === 'ok' || body.status === 'failed') &&
+    (body.strategy === undefined || typeof body.strategy === 'string') &&
     isVerdict(body.verdict)
   );
 }

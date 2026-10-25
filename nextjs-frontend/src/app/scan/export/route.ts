@@ -33,7 +33,7 @@ export async function GET(request: Request): Promise<Response> {
     status: 200,
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${csvFileName(query.source, query.tf, new Date())}"`,
+      'Content-Disposition': `attachment; filename="${csvFileName(query.source, query.tf, new Date(), query.strategy)}"`,
       'Cache-Control': 'no-store',
     },
   });

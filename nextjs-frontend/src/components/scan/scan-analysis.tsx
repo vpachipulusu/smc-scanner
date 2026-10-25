@@ -10,6 +10,7 @@ import { ANALYSE_DISABLED_HINT, NO_VERDICT_REASON, skipReason } from '@/lib/api/
 import type { AnalysedRowOut } from '@/lib/api/analyse';
 import type { ScanFailureOut } from '@/lib/api/scan';
 import { IDLE_ANALYSE_STATE, type AnalyseState } from '@/lib/scan/analyse-state';
+import type { ConditionLabels } from '@/lib/scan/conditions';
 import { NOT_APPLICABLE, scanTimeframes, higherTimeframe } from '@/lib/scan/mtf';
 import { scanSearchParams, type ScanPageParams } from '@/lib/scan/params';
 
@@ -84,13 +85,19 @@ export function ScanAnalysis({
   rows,
   failures,
   aiEnabled,
+  strategyMtf = false,
+  conditionLabels,
 }: {
   params: ScanPageParams;
   rows: ReadonlyArray<ScanTableRow>;
   failures: ReadonlyArray<ScanFailureOut>;
   aiEnabled: boolean;
+  /** The chosen strategy turns multi-timeframe context on even when the form leaves it off. */
+  strategyMtf?: boolean;
+  conditionLabels?: ConditionLabels;
 }) {
   const [state, formAction, pending] = useActionState(analyseScanAction, IDLE_ANALYSE_STATE);
+  const mtf = params.query.mtf || strategyMtf;
   const analysed = state.status === 'success';
   const shownRows: ReadonlyArray<ScanTableRow> = analysed ? state.rows : rows;
   const shownFailures = analysed ? state.failures : failures;
@@ -130,9 +137,14 @@ export function ScanAnalysis({
           {state.message}
         </p>
       )}
-      {params.query.mtf && <MtfSummary params={params} />}
+      {mtf && <MtfSummary params={params} />}
       {shownRows.length > 0 && (
-        <ScanTable rows={shownRows} showAi={analysed} showHtf={params.query.mtf} />
+        <ScanTable
+          rows={shownRows}
+          showAi={analysed}
+          showHtf={mtf}
+          conditionLabels={conditionLabels}
+        />
       )}
       {analysed && <AiSkipped rows={withoutVerdict(state.rows)} />}
       <ScanFailures failures={shownFailures} />

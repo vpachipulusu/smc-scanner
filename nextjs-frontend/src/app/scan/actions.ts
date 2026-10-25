@@ -15,6 +15,7 @@ const FORM_KEYS = [
   'all',
   'mtf',
   'htf',
+  'strategy',
 ] as const;
 const MAX_FIELD_LENGTH = 2000;
 

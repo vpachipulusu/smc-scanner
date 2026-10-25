@@ -1,4 +1,5 @@
 import type { ScheduleCreate, ScheduleOut } from '@/lib/api/schedules';
+import { DEFAULT_STRATEGY, STRATEGY_SLUG_PATTERN } from '@/lib/scan/params';
 
 /**
  * Parsing and validation of the schedule form. Limits mirror the API (`ScheduleCreate`), so a bad
@@ -38,7 +39,8 @@ export type FieldName =
   | 'min_score'
   | 'min_confidence'
   | 'telegram_chat_id'
-  | 'require_htf_aligned';
+  | 'require_htf_aligned'
+  | 'strategy';
 
 export type FieldErrors = Partial<Record<FieldName, string>>;
 
@@ -57,6 +59,7 @@ export type FormValues = {
   telegram_chat_id: string;
   mtf: boolean;
   require_htf_aligned: boolean;
+  strategy: string;
 };
 
 export const EMPTY_VALUES: FormValues = {
@@ -73,6 +76,7 @@ export const EMPTY_VALUES: FormValues = {
   telegram_chat_id: '',
   mtf: false,
   require_htf_aligned: false,
+  strategy: DEFAULT_STRATEGY,
 };
 
 export type ParsedSchedule =
@@ -93,6 +97,7 @@ export function valuesFromSchedule(schedule: ScheduleOut): FormValues {
     telegram_chat_id: schedule.telegram_chat_id ?? '',
     mtf: schedule.mtf,
     require_htf_aligned: schedule.require_htf_aligned,
+    strategy: schedule.strategy ?? DEFAULT_STRATEGY,
   };
 }
 
@@ -122,6 +127,7 @@ export function readValues(form: FormData): FormValues {
     telegram_chat_id: text(form, 'telegram_chat_id'),
     mtf: flag(form, 'mtf', MTF_ON_VALUES),
     require_htf_aligned: flag(form, 'require_htf_aligned', MTF_ON_VALUES),
+    strategy: text(form, 'strategy') || DEFAULT_STRATEGY,
   };
 }
 
@@ -198,6 +204,8 @@ export function parseScheduleForm(form: FormData): ParsedSchedule {
     errors.telegram_chat_id = 'Use a numeric chat id (e.g. -1001234567890) or an @channelname.';
   }
 
+  if (!STRATEGY_SLUG_PATTERN.test(values.strategy)) errors.strategy = 'Choose a strategy.';
+
   if (values.require_htf_aligned && !values.mtf) {
     errors.require_htf_aligned = 'Include higher/lower timeframe context first.';
   }
@@ -228,6 +236,7 @@ export function parseScheduleForm(form: FormData): ParsedSchedule {
       telegram_chat_id: chatId === '' ? null : chatId,
       mtf: values.mtf,
       require_htf_aligned: values.require_htf_aligned,
+      strategy: values.strategy,
     },
   };
 }
