@@ -1,7 +1,8 @@
-"""Zone detection (via smartmoneyconcepts) and the scanner's own touch/invalidation rules.
+"""Zone detection and the scanner's own touch/invalidation rules.
 
-The library only *detects* FVGs and OBs. Touch counting, freshness, invalidation and the
-TOUCHING/NEAR status follow the rules below, which are stricter than the library's
+FVGs are detected in-repo with the same three-candle test as ``smartmoneyconcepts``'
+``smc.fvg``; OBs come from the library's ``smc.ob``. Touch counting, freshness, invalidation
+and the TOUCHING/NEAR status follow the rules below, which are stricter than the library's
 ``MitigatedIndex``:
 
 * FVG: usable only once fully formed before the latest candle; touches count from two
@@ -53,9 +54,47 @@ def _direction(value: float) -> Direction:
     return BULLISH if int(value) == 1 else BEARISH
 
 
+def _shifted(values: FloatArray, periods: int) -> FloatArray:
+    """``values`` moved ``periods`` places later (negative: earlier), NaN-filled like ``shift``."""
+    result = np.full(len(values), np.nan)
+    if periods > 0:
+        result[periods:] = values[:-periods]
+    else:
+        result[:periods] = values[-periods:]
+    return result
+
+
+def fvg_frame(ohlc: pd.DataFrame) -> pd.DataFrame:
+    """``FVG``, ``Top`` and ``Bottom`` exactly as ``smc.fvg`` computes them, vectorised.
+
+    A bullish gap sits on a middle candle that closes above its open when the next low is
+    above the previous high (Top = next low, Bottom = previous high); a bearish gap mirrors
+    it. Other rows, including the first and last candle, are NaN. Expects lower-case OHLC
+    columns (as every loader produces) and returns float64 columns. The library's
+    ``MitigatedIndex`` (a forward scan per gap) is not computed: the scanner never reads it,
+    and on point-in-time replay it dominated the scan time.
+    """
+    high = ohlc["high"].to_numpy(dtype=float)
+    low = ohlc["low"].to_numpy(dtype=float)
+    open_ = ohlc["open"].to_numpy(dtype=float)
+    close = ohlc["close"].to_numpy(dtype=float)
+    up, down = close > open_, close < open_
+    prev_high, prev_low = _shifted(high, 1), _shifted(low, 1)
+    next_high, next_low = _shifted(high, -1), _shifted(low, -1)
+    bullish = up & (prev_high < next_low)
+    bearish = down & (prev_low > next_high)
+    return pd.DataFrame(
+        {
+            "FVG": np.where(bullish, 1.0, np.where(bearish, -1.0, np.nan)),
+            "Top": np.where(bullish, next_low, np.where(bearish, prev_low, np.nan)),
+            "Bottom": np.where(bullish, prev_high, np.where(bearish, next_high, np.nan)),
+        }
+    )
+
+
 def detect_fvgs(ohlc: pd.DataFrame) -> list[Zone]:
     """Fair value gaps fully formed before the latest candle."""
-    frame = smc.fvg(ohlc)
+    frame = fvg_frame(ohlc)
     last_index = len(ohlc) - 1
     zones: list[Zone] = []
     for index, flag, top, bottom in zip(
@@ -102,6 +141,9 @@ def detect_obs(ohlc: pd.DataFrame, swing_frame: pd.DataFrame) -> list[Zone]:
     The library stores block edges as float32; they are exactly the block candle's high
     and low, so the float64 candle values are used instead.
     """
+    # Recomputed on every call, never cached across replay prefixes: ``smc.ob`` revises
+    # earlier blocks as later bars arrive (a block broken and then reclaimed is reset), so a
+    # block list from a shorter prefix is not a prefix of the longer one's.
     frame = smc.ob(ohlc, swing_frame)
     candles = Candles.from_frame(ohlc)
     zones: list[Zone] = []
