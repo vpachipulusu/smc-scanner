@@ -117,7 +117,9 @@ def test_bars_out_of_range_raise(loader: TfLoader, bars: int) -> None:
     assert loader.calls == []
 
 
-@pytest.mark.parametrize(("seed", "stride"), [(-1, 1), (True, 1), (0, 0)])
+@pytest.mark.parametrize(
+    ("seed", "stride"), [(-1, 1), (True, 1), (2**32, 1), (0, 0), (0, MAX_BARS + 1)]
+)
 def test_bad_seed_or_stride_raise_before_anything_loads(
     loader: TfLoader, seed: int, stride: int
 ) -> None:
@@ -166,7 +168,9 @@ def test_unknown_condition_raises_before_anything_loads(loader: TfLoader) -> Non
 def test_backtest_package_imports_no_api_schedule_or_ai() -> None:
     forbidden = ("smc_scanner.api", "smc_scanner.schedule", "smc_scanner.ai")
     package = Path(backtest.__file__).parent
-    for path in package.glob("*.py"):
+    modules = sorted(package.glob("*.py"))
+    assert {"baseline.py", "sweep.py", "walkforward.py"} <= {path.name for path in modules}
+    for path in modules:
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
