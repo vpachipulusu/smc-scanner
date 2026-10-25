@@ -5,10 +5,12 @@ import { useActionState, useRef, useState, type KeyboardEvent } from 'react';
 
 import { deleteStrategyAction } from '@/app/strategies/actions';
 import { Button } from '@/components/ui/button';
+import { backtestHref } from '@/lib/backtests/routes';
 import { IDLE_STRATEGY_ROW_STATE } from '@/lib/strategies/state';
 
 /**
- * A strategy's actions: scan with it, duplicate it and, for a custom one, edit and delete it.
+ * A strategy's actions: scan with it, backtest it, duplicate it and, for a custom one, edit and
+ * delete it.
  * Delete asks for confirmation first (Cancel has the initial focus, Escape cancels, focus returns
  * to Delete). A successful delete redirects to the list, which announces it; a failure is
  * announced here in an always-present alert region.
@@ -40,6 +42,11 @@ export function StrategyActions({ slug, name, builtin }: StrategyActionsProps) {
         <Button variant="outline" size="sm" asChild>
           <Link href={`/scan?strategy=${encoded}`} aria-label={`Scan with this strategy: ${name}`}>
             Scan with this strategy
+          </Link>
+        </Button>
+        <Button variant="ghost" size="sm" asChild>
+          <Link href={backtestHref(slug)} aria-label={`Backtest: ${name}`}>
+            Backtest
           </Link>
         </Button>
         <Button variant="ghost" size="sm" asChild>

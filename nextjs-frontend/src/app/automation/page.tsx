@@ -5,6 +5,7 @@ import { SchedulesTable } from '@/components/automation/schedules-table';
 import { ErrorBanner } from '@/components/dashboard/error-banner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { fetchBacktestVerdicts } from '@/lib/api/backtests';
 import { fetchScanConfig } from '@/lib/api/scan';
 import { fetchSchedules } from '@/lib/api/schedules';
 import { fetchStrategies } from '@/lib/api/strategies';
@@ -24,13 +25,19 @@ type SearchParams = Promise<{ edit?: string | string[] }>;
 
 export default async function AutomationPage({ searchParams }: { searchParams: SearchParams }) {
   const { edit } = await searchParams;
-  const [result, configResult, strategiesResult] = await Promise.all([
+  const configPromise = fetchScanConfig();
+  const strategiesPromise = fetchStrategies();
+  // The picker's verdict badges need only the strategy list, so they load beside the schedules.
+  const optionsPromise = Promise.all([configPromise, strategiesPromise]).then(([c, s]) =>
+    strategyOptions(c.success ? c.data : null, s.success ? s.data : null)
+  );
+  const [result, strategiesResult, options, verdicts] = await Promise.all([
     fetchSchedules(),
-    fetchScanConfig(),
-    fetchStrategies(),
+    strategiesPromise,
+    optionsPromise,
+    optionsPromise.then((list) => fetchBacktestVerdicts(list.map((option) => option.slug))),
   ]);
   const strategies = strategiesResult.success ? strategiesResult.data : null;
-  const options = strategyOptions(configResult.success ? configResult.data : null, strategies);
   // Only the full list is authoritative: /config falls back to the built-ins when the store is down.
   const knownStrategies = strategies ? new Set(strategies.map((item) => item.slug)) : null;
   const editId = parseScheduleId(edit);
@@ -89,6 +96,7 @@ export default async function AutomationPage({ searchParams }: { searchParams: S
               schedule={editing}
               strategies={options}
               strategiesComplete={strategies !== null}
+              strategyVerdicts={verdicts}
             />
           </CardContent>
         </Card>

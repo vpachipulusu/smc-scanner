@@ -4,6 +4,7 @@ import { ErrorBanner } from '@/components/dashboard/error-banner';
 import { PageNotice } from '@/components/strategies/page-notice';
 import { StrategyList } from '@/components/strategies/strategy-list';
 import { Button } from '@/components/ui/button';
+import { fetchBacktestVerdicts } from '@/lib/api/backtests';
 import { fetchConditionCatalogue, fetchStrategies } from '@/lib/api/strategies-write';
 import { SLUG_PATTERN } from '@/lib/strategies/schema';
 
@@ -21,6 +22,8 @@ export default async function StrategiesPage({ searchParams }: { searchParams: S
   const { saved, deleted } = await searchParams;
   const [result, catalogue] = await Promise.all([fetchStrategies(), fetchConditionCatalogue()]);
   const strategies = result.success ? result.data : [];
+  // One read per listed strategy, server-side and in parallel; a failed read shows no badge.
+  const verdicts = await fetchBacktestVerdicts(strategies.map((strategy) => strategy.slug));
   // Labels only: without the catalogue, conditions show their keys.
   const conditions = catalogue.success ? catalogue.data : [];
   const savedSlug = slugParam(saved);
@@ -58,7 +61,7 @@ export default async function StrategiesPage({ searchParams }: { searchParams: S
           </Button>
         </div>
       ) : (
-        <StrategyList strategies={strategies} catalogue={conditions} />
+        <StrategyList strategies={strategies} catalogue={conditions} verdicts={verdicts} />
       )}
     </div>
   );
