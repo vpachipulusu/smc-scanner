@@ -26,7 +26,7 @@ import {
   strategyErrorMessage,
   strategyRateLimitMessage,
 } from '@/lib/api/strategies-write-messages';
-import { BUILTIN, RAW_CONDITIONS, makeStrategy } from '../../helpers/strategy-fixtures';
+import { BUILTIN, RAW_CONDITIONS, makeStrategy } from '../../helpers/strategies-page-fixtures';
 
 const jsonResponse = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {

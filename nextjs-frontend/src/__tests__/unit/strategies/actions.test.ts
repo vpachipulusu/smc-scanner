@@ -2,7 +2,7 @@
 /** The strategy server actions validate allow-listed fields, call the wrappers and map failures. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CATALOGUE, VALID_FORM, formOf, makeStrategy } from '../../helpers/strategy-fixtures';
+import { CATALOGUE, VALID_FORM, formOf, makeStrategy } from '../../helpers/strategies-page-fixtures';
 
 const mocks = vi.hoisted(() => ({
   addStrategy: vi.fn(),

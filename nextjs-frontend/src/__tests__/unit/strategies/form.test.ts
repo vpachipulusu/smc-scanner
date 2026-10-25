@@ -20,7 +20,7 @@ import {
   VALID_FORM,
   formOf,
   makeStrategy,
-} from '../../helpers/strategy-fixtures';
+} from '../../helpers/strategies-page-fixtures';
 
 const parse = (
   patch: Record<string, string | readonly string[]> = {},

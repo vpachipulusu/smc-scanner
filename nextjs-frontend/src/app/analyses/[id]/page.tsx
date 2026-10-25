@@ -7,6 +7,8 @@ import { AnalysisLoadError } from '@/components/analyses/analysis-load-error';
 import { parseAnalysisId } from '@/components/analyses/format';
 import { fetchAnalysis } from '@/lib/api/analyses';
 import { fetchCalendar } from '@/lib/api/calendar';
+import { fetchStrategies } from '@/lib/api/strategies';
+import { DEFAULT_STRATEGY } from '@/lib/scan/params';
 
 /** The stored analysis can be re-run elsewhere, so the page is always read live. */
 export const dynamic = 'force-dynamic';
@@ -36,6 +38,14 @@ export default async function AnalysisPage({ params }: Props) {
     if (result.status === 404) notFound();
     return <AnalysisLoadError message={result.error} id={id} />;
   }
-  const calendar = await fetchCalendar(result.data.symbol);
-  return <AnalysisDetail analysis={result.data} calendar={calendar} />;
+  const [calendar, strategies] = await Promise.all([
+    fetchCalendar(result.data.symbol),
+    fetchStrategies(),
+  ]);
+  const slug = result.data.strategy ?? DEFAULT_STRATEGY;
+  // The stored row keeps only the slug; the name comes from the list, the slug is the fallback.
+  const strategyName = strategies.success
+    ? strategies.data.find((item) => item.slug === slug)?.name
+    : undefined;
+  return <AnalysisDetail analysis={result.data} calendar={calendar} strategyName={strategyName} />;
 }

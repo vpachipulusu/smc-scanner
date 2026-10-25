@@ -9,6 +9,7 @@ import {
   type ScanResponse,
   type ScanRowOut,
 } from './generated';
+import { DEFAULT_STRATEGY } from '@/lib/scan/params';
 
 /**
  * Server-only calls to the scanner API. Callers import these instead of the generated SDK. The
@@ -34,6 +35,8 @@ export type ScanQuery = {
   mtf: boolean;
   /** Drop hits the higher timeframe does not confirm; the API rejects it without `mtf`. */
   requireHtfAligned: boolean;
+  /** Strategy slug; the API's default (`smc-default`) is left out of the request. */
+  strategy: string;
 };
 
 export const SCAN_UNAVAILABLE_MESSAGE =
@@ -84,6 +87,7 @@ export async function fetchScan(query: ScanQuery): Promise<ApiResult<ScanRespons
         all_touches: query.allTouches,
         mtf: query.mtf,
         require_htf_aligned: query.requireHtfAligned,
+        strategy: query.strategy === DEFAULT_STRATEGY ? undefined : query.strategy,
       },
     })
   );

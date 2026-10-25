@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { BUILTIN, CATALOGUE, makeStrategy } from '../../helpers/strategy-fixtures';
+import { BUILTIN, CATALOGUE, makeStrategy } from '../../helpers/strategies-page-fixtures';
 
 const mocks = vi.hoisted(() => ({
   fetchStrategies: vi.fn(),

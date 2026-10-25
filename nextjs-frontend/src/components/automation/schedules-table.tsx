@@ -9,11 +9,38 @@ import {
 } from '@/components/ui/table';
 import type { ScheduleOut } from '@/lib/api/schedules';
 import { formatDateTime } from '@/lib/automation/format';
+import { DEFAULT_STRATEGY } from '@/lib/scan/params';
+import { isMissingStrategy } from '@/lib/scan/strategy-options';
 
 import { ScheduleActions } from './schedule-actions';
 
-/** The schedules list. Names and symbols are user text: rendered as plain, escaped text only. */
-export function SchedulesTable({ schedules }: { schedules: ScheduleOut[] }) {
+export const STRATEGY_MISSING_PILL = `Strategy missing: runs use ${DEFAULT_STRATEGY}`;
+
+function StrategyLine({ slug, known }: { slug: string; known: ReadonlySet<string> | null }) {
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+      <span>
+        Strategy: <span className="font-mono">{slug}</span>
+      </span>
+      {isMissingStrategy(known, slug) && (
+        <StatusPill variant="warn">{STRATEGY_MISSING_PILL}</StatusPill>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The schedules list. Names and symbols are user text: rendered as plain, escaped text only.
+ * `knownStrategies` is the slug set from GET /strategies; when given, a schedule whose strategy
+ * was deleted is flagged (its runs fall back to the default strategy).
+ */
+export function SchedulesTable({
+  schedules,
+  knownStrategies = null,
+}: {
+  schedules: ScheduleOut[];
+  knownStrategies?: ReadonlySet<string> | null;
+}) {
   return (
     <Table stacked aria-label="Schedules">
       <TableHeader>
@@ -42,6 +69,7 @@ export function SchedulesTable({ schedules }: { schedules: ScheduleOut[] }) {
             <TableCell label="Scan">
               {schedule.source} {schedule.tf} · every {schedule.frequency} ·{' '}
               {schedule.symbols.join(', ')}
+              <StrategyLine slug={schedule.strategy ?? DEFAULT_STRATEGY} known={knownStrategies} />
               {schedule.mtf && (
                 <span className="mt-1 flex flex-wrap gap-1">
                   <StatusPill variant="info">Multi-timeframe</StatusPill>

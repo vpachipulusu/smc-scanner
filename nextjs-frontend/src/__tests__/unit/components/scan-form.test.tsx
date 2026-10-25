@@ -56,6 +56,8 @@ describe('ScanForm', () => {
       'demo',
       '15m',
       '1h',
+      // Without strategy options the current strategy is the picker's only choice.
+      'smc-default',
     ]);
     expect(screen.getByLabelText('Symbols')).toHaveAttribute(
       'placeholder',
@@ -66,7 +68,7 @@ describe('ScanForm', () => {
   it('falls back to the built-in choices when the config is unavailable', () => {
     render(<ScanForm params={DEFAULT_PARAMS} config={null} />);
 
-    expect(screen.getAllByRole('option')).toHaveLength(8);
+    expect(screen.getAllByRole('option')).toHaveLength(9);
     expect(screen.getByLabelText('Symbols')).toHaveAttribute(
       'placeholder',
       'watchlist (see watchlist.yaml)'

@@ -50,6 +50,7 @@ describe('analyseScanAction', () => {
       allTouches: true,
       mtf: false,
       requireHtfAligned: false,
+      strategy: 'smc-default',
     });
     expect(state).toEqual({ status: 'success', rows: [row], failures: [] });
   });
