@@ -51,6 +51,8 @@ DEFAULT_DEMO_SYMBOLS: Final[tuple[str, ...]] = ("EURUSD", "XAUUSD", "NAS100", "U
 # Fewest bars that make a scan possible at all: ATR(14) needs a previous close.
 MIN_BARS: Final[int] = ATR_PERIOD + 1
 MAX_BARS: Final[int] = 5000
+# A backtest with a ``lookback`` window may replay a longer history; nothing else reads this.
+MAX_BACKTEST_BARS: Final[int] = 200_000
 # What the API accepts as a symbol, and how many per request; the CLI checks the same.
 MAX_SYMBOLS: Final[int] = 50
 SYMBOL_PATTERN: Final = re.compile(r"^[A-Za-z0-9._#@\-]{1,32}$")

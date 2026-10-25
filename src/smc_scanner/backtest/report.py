@@ -70,6 +70,7 @@ class BacktestReport:
     symbols: tuple[SymbolBacktest, ...]
     pooled: BacktestStats  # every symbol's outcomes in signal-time order
     failures: tuple[ScanFailure, ...]
+    lookback: int | None = None  # bars each replay step scanned; None: the whole prefix
 
     def pooled_outcomes(self) -> list[Outcome]:
         """Every symbol's outcomes by signal time, then symbol: the order ``pooled`` uses."""
@@ -88,6 +89,7 @@ class BacktestReport:
                 "strategy": self.strategy,
                 "seed": self.seed,
                 "stride": self.stride,
+                "lookback": self.lookback,
                 "rules": asdict(self.rules),
                 "pooled": asdict(self.pooled),
                 "symbols": [{"symbol": r.symbol, "stats": asdict(r.stats)} for r in self.symbols],
@@ -139,10 +141,18 @@ class _Job:
     options: ScanOptions | None
     seed: int
     stride: int
+    lookback: int | None
 
     def run(self, symbol: str) -> SymbolBacktest:
         ohlc = load_frame(self.loader, symbol, self.timeframe, self.bars)
-        signals = replay(symbol, ohlc, self.strategy, options=self.options, stride=self.stride)
+        signals = replay(
+            symbol,
+            ohlc,
+            self.strategy,
+            options=self.options,
+            stride=self.stride,
+            lookback=self.lookback,
+        )
         outcomes = tuple(label(ohlc, signal, self.rules) for signal in signals)
         return SymbolBacktest(symbol, outcomes, summarise(outcomes, seed=self.seed))
 
@@ -162,14 +172,16 @@ def run_backtest(
     options: ScanOptions | None = None,
     seed: int = 0,
     stride: int = 1,
+    lookback: int | None = None,
 ) -> BacktestReport:
     """Backtest ``strategy`` on each symbol's last ``bars`` candles. ``options`` overrides the
-    strategy's scan tuning, as in the live scan; ``stride`` > 1 replays approximately (see
-    ``replay``). Bad ``bars``, ``seed`` or ``stride``, or an unknown condition, raise before
-    anything loads. A symbol whose load, replay or labelling fails is logged, recorded and
-    skipped whole."""
-    check_args(bars, seed, stride, strategy)
-    job = _Job(loader, timeframe, bars, strategy, rules, options, seed, stride)
+    strategy's scan tuning, as in the live scan; ``stride`` > 1 replays approximately and
+    ``lookback`` scans each step's last ``lookback`` bars, as a live scan with that ``bars``
+    would (see ``replay``); with it, ``bars`` may exceed ``MAX_BARS``. Bad ``bars``, ``seed``,
+    ``stride`` or ``lookback``, or an unknown condition, raise before anything loads. A symbol
+    whose load, replay or labelling fails is logged, recorded and skipped whole."""
+    check_args(bars, seed, stride, strategy, lookback=lookback)
+    job = _Job(loader, timeframe, bars, strategy, rules, options, seed, stride, lookback)
     results, failures = run_each(symbols, lambda _, symbol: job.run(symbol), log)
     return BacktestReport(
         timeframe=timeframe,
@@ -181,4 +193,5 @@ def run_backtest(
         symbols=tuple(results),
         pooled=summarise(_pooled(results), seed=seed),
         failures=tuple(failures),
+        lookback=lookback,
     )

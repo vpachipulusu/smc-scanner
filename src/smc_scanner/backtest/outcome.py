@@ -27,7 +27,7 @@ import pandas as pd
 from smc_scanner.backtest.replay import Signal
 from smc_scanner.config import MAX_BARS
 from smc_scanner.models import BULLISH, Direction
-from smc_scanner.structure import atr as average_true_range
+from smc_scanner.structure import atr_at
 
 ExitReason = Literal["target", "stop", "time", "open", "void"]
 FORWARD_HORIZONS: Final = (5, 10, 20)  # bars; Outcome has one fwd_<h>_atr field per horizon
@@ -123,7 +123,7 @@ class _Trade:
 
 def _checked_atr(ohlc: pd.DataFrame, signal: Signal, value: float | None) -> float:
     if value is None:  # the signal bar's own ATR: nothing after it is read
-        return average_true_range(ohlc.iloc[: signal.bar_index + 1])
+        return atr_at(ohlc, signal.bar_index)
     if not math.isfinite(value) or value <= 0:
         raise ValueError("ATR must be a positive finite number")
     return value

@@ -9,8 +9,9 @@ A row is one run of one strategy: what was asked (source, timeframe, bars, symbo
 split, seed, stride), how it went (``status``: pending, running, done or failed) and, once done,
 its statistics as strict JSON (``stats``: the dict a walk-forward or pooled ``to_dict()``
 returned, without per-signal rows) and ``verdict``. ``error`` only ever holds one of the fixed
-messages the caller passes, never exception text. ``lookback`` is reserved for a later story and
-always NULL here. Only the latest ``MAX_ROWS_PER_STRATEGY`` finished rows per strategy, and
+messages the caller passes, never exception text. ``lookback`` is the replay window in bars (a
+CLI run with ``--lookback``) or NULL for a whole-prefix replay; the API never sets it. Only the
+latest ``MAX_ROWS_PER_STRATEGY`` finished rows per strategy, and
 ``MAX_ROWS`` in all, are kept; a pending or running row is never pruned.
 
 Like ``strategy.store``, this module only *checks* the shared ``PRAGMA user_version`` (a file
@@ -37,6 +38,7 @@ from smc_scanner.ai.store import (
     StoreError,
     checked_path,
 )
+from smc_scanner.backtest._common import check_lookback
 
 log = logging.getLogger(__name__)
 
@@ -90,8 +92,8 @@ _COLUMNS: Final = (
 _INSERT: Final = """
 INSERT INTO backtests (
     created_at, strategy, source, timeframe, bars, symbols, rules, split, train_fraction, seed,
-    stride, stats, verdict, duration_seconds, status, error
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    stride, stats, verdict, duration_seconds, status, error, lookback
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 # Retention keeps the newest finished rows by id (ids only grow, unlike a wall clock that can
 # step back): MAX_ROWS_PER_STRATEGY of one strategy, then MAX_ROWS in all. Unfinished rows stay.
@@ -161,6 +163,7 @@ class NewBacktest:
     verdict: Verdict | None = None
     duration_seconds: float | None = None
     error: str | None = None
+    lookback: int | None = None  # the replay window in bars; None: the whole prefix
 
 
 @dataclass(frozen=True)
@@ -182,7 +185,7 @@ class BacktestRecord:
     verdict: Verdict | None = None
     duration_seconds: float | None = None
     error: str | None = None
-    lookback: int | None = None  # reserved for a later story
+    lookback: int | None = None  # the replay window in bars; None: the whole prefix
 
 
 class BacktestRepository(Protocol):
@@ -265,6 +268,7 @@ def _checked_run(run: NewBacktest) -> None:
     _checked_verdict(run.verdict)
     if run.train_fraction is not None and not math.isfinite(run.train_fraction):
         raise ValueError("train_fraction must be finite")
+    check_lookback(run.lookback)  # the replay's own limits: a stored row was a real run
 
 
 def _utc_now() -> datetime:
@@ -371,6 +375,7 @@ class SqliteBacktestRepository:
             run.duration_seconds,
             run.status,
             _checked_error(run.error),
+            run.lookback,
         )
         with self._connect() as conn:
             row_id = conn.execute(_INSERT, params).lastrowid

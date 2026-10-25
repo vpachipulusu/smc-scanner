@@ -168,6 +168,7 @@ class WalkForwardResult:
     flipped_baseline: BacktestStats  # the out-of-sample signals, flipped
     verdict: Verdict
     failures: tuple[ScanFailure, ...]
+    lookback: int | None = None  # bars each replay step scanned; None: the whole prefix
 
     def to_dict(self) -> dict[str, object]:
         """The whole result as strict-JSON data: a non-finite float becomes None."""
@@ -178,6 +179,7 @@ class WalkForwardResult:
                 "strategy": self.strategy,
                 "seed": self.seed,
                 "stride": self.stride,
+                "lookback": self.lookback,
                 "split": self.split,
                 "train_fraction": self.train_fraction,
                 "random_draws": self.random_draws,
@@ -223,6 +225,7 @@ class _Job:
     stride: int
     train_fraction: float
     test_symbols: frozenset[str] | None  # None: a time split
+    lookback: int | None
 
     def _boundary(self, symbol: str, ohlc: pd.DataFrame) -> int:
         if self.test_symbols is None:
@@ -244,7 +247,14 @@ class _Job:
     def run(self, position: int, symbol: str) -> _SymbolResult:
         ohlc = load_frame(self.loader, symbol, self.timeframe, self.bars)
         boundary = self._boundary(symbol, ohlc)
-        signals = replay(symbol, ohlc, self.strategy, options=self.options, stride=self.stride)
+        signals = replay(
+            symbol,
+            ohlc,
+            self.strategy,
+            options=self.options,
+            stride=self.stride,
+            lookback=self.lookback,
+        )
         in_sample, out_of_sample = split_outcomes(ohlc, signals, boundary, self.rules)
         tested = [outcome.signal for outcome in out_of_sample]
         window = SymbolWindow(
@@ -265,10 +275,17 @@ class _Job:
 
 
 def check_walk_forward_args(
-    bars: int, seed: int, stride: int, strategy: Strategy, split: str, train_fraction: float
+    bars: int,
+    seed: int,
+    stride: int,
+    strategy: Strategy,
+    split: str,
+    train_fraction: float,
+    *,
+    lookback: int | None,
 ) -> float:
     """Raise on any bad argument before anything loads; returns ``train_fraction``."""
-    check_args(bars, seed, stride, strategy)
+    check_args(bars, seed, stride, strategy, lookback=lookback)
     if split not in get_args(SplitKind):
         raise ValueError(f"split must be one of {', '.join(get_args(SplitKind))}")
     return _fraction(train_fraction)
@@ -291,18 +308,24 @@ def walk_forward(
     options: ScanOptions | None = None,
     seed: int = 0,
     stride: int = 1,
+    lookback: int | None = None,
 ) -> WalkForwardResult:
     """Walk-forward ``strategy`` on each distinct symbol's last ``bars`` candles (see the module
     docstring for the split and what each side reads). ``seed`` fixes the symbol split, the
-    random baseline and every bootstrap. Bad arguments raise before anything loads; a symbol
+    random baseline and every bootstrap; ``lookback`` windows each replay step and lets ``bars``
+    exceed ``MAX_BARS`` (see ``replay``). Bad arguments raise before anything loads; a symbol
     whose load, replay or labelling fails is logged, recorded and skipped whole. The caller
     owns and closes ``loader``."""
-    fraction = check_walk_forward_args(bars, seed, stride, strategy, split, train_fraction)
+    fraction = check_walk_forward_args(
+        bars, seed, stride, strategy, split, train_fraction, lookback=lookback
+    )
     unique = distinct_symbols(symbols)
     test = None
     if split == "symbols":
         test = frozenset(split_by_symbols(unique, fraction, seed=seed)[1])
-    job = _Job(loader, timeframe, bars, strategy, rules, options, seed, stride, fraction, test)
+    job = _Job(
+        loader, timeframe, bars, strategy, rules, options, seed, stride, fraction, test, lookback
+    )
     results, failures = run_each(unique, job.run, log)
     out_of_sample = _pool((r.out_of_sample for r in results), seed)
     random_baseline = _pool((r.random for r in results), seed)
@@ -324,4 +347,5 @@ def walk_forward(
         flipped_baseline=flipped_baseline,
         verdict=verdict(out_of_sample, random_baseline, flipped_baseline),
         failures=tuple(failures),
+        lookback=lookback,
     )

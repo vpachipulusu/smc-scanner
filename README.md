@@ -228,6 +228,20 @@ summaries in `SMC_DB_PATH`, where `GET /backtests` lists them. With csv files th
 defaults to the mean `spread` column. A run at stride 1 over 5000 bars takes minutes per
 symbol; `--stride` trades precision for speed.
 
+`--lookback N` (default: off) makes every replay step scan only its last `N` candles, the window
+a live scan with `--bars N` sees, so the backtest matches what the scanner would have shown and
+each step costs the same however long the history is. With it, `--bars` may go up to 200,000
+and a csv source defaults to the whole file, e.g. 19 years of GBPUSD 1h candles:
+
+```bash
+uv run smc-backtest --source csv --symbols data/GBPUSD_1h.csv --tf 1h --lookback 500 --strategy smc-default --out backtests
+```
+
+The lookback is recorded in `summary.json` and the stored row (the API does not take it). A
+step costs the same however long the history is, but long histories have many steps: replaying
+the 121,940 GBPUSD 1h bars at `--lookback 500` and stride 1 took about 24 minutes (12 ms a step),
+per symbol and strategy, before labelling; `--stride` cuts that proportionally.
+
 ## Quick start (no terminal, no key)
 
 ```bash

@@ -78,6 +78,7 @@ class FakeRunner:
         split: SplitSpec,
         seed: int,
         stride: int,
+        lookback: int | None = None,
     ) -> FakeResult:
         loaded = []
         for symbol in symbols:
@@ -95,6 +96,7 @@ class FakeRunner:
                 "split": split,
                 "seed": seed,
                 "stride": stride,
+                "lookback": lookback,
                 "loaded": loaded,
             }
         )

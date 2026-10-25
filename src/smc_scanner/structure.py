@@ -32,6 +32,13 @@ def atr(ohlc: pd.DataFrame, period: int = ATR_PERIOD) -> float:
     return value
 
 
+def atr_at(ohlc: pd.DataFrame, index: int, period: int = ATR_PERIOD) -> float:
+    """``atr`` with bar ``index`` as the latest candle. It reads only the last ``period`` true
+    ranges, so only those bars and the close before them are sliced: the same value as on the
+    whole prefix, without an O(n) pass per call on a long frame."""
+    return atr(ohlc.iloc[max(0, index - period) : index + 1], period)
+
+
 def raw_swings(ohlc: pd.DataFrame, swing_length: int) -> pd.DataFrame:
     """The library's swing frame (``HighLow``, ``Level``), unfiltered."""
     frame: pd.DataFrame = smc.swing_highs_lows(ohlc, swing_length=swing_length)

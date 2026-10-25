@@ -86,6 +86,18 @@ def test_csv_loader_reads_file_and_keeps_last_bars(tmp_path: Path) -> None:
     assert out["volume"].tolist() == [20.0, 30.0]
 
 
+def test_csv_loader_read_all_returns_the_whole_file(tmp_path: Path) -> None:
+    path = tmp_path / "x.csv"
+    rows = [f"2026-01-01T{h:02d}:00:00,1,2,0,{h}.5" for h in range(12)]
+    path.write_text("time,open,high,low,close\n" + "\n".join(reversed(rows)) + "\n")
+
+    whole = CsvLoader().read_all(str(path))
+
+    assert len(whole) == 12 and whole["close"].iloc[-1] == 11.5
+    assert list(whole.index) == list(range(12))
+    assert CsvLoader().load(str(path), "1h", 5).equals(whole.tail(5).reset_index(drop=True))
+
+
 @pytest.mark.parametrize(
     ("name", "content", "message"),
     [

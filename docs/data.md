@@ -78,8 +78,12 @@ more timeframes add little. Memory stays flat over the run and scales with `--ch
 
 ## Why per-timeframe files and no 1m
 
-The CSV loader reads a whole file into memory and keeps the last `--bars` rows, and the scanner
-asks for one timeframe at a time. One file per timeframe keeps each load small and needs no
-resampling at scan time. A 1m file would be about 7 million rows (hundreds of MB) per 19-year
+The CSV loader reads a whole file into memory and keeps the last `--bars` rows (`CsvLoader.load`;
+`CsvLoader.read_all` returns every row), and the scanner asks for one timeframe at a time.
+`--bars` is capped at 5000 (`MAX_BARS`) everywhere except `smc-backtest --lookback N`, which
+replays up to 200,000 bars (`MAX_BACKTEST_BARS`) and, for csv files, defaults to the whole file
+up to that cap: each replay step then scans only its last `N` bars, as a live scan with
+`--bars N` would. One file per timeframe keeps each load small and needs no resampling at scan
+time. A 1m file would be about 7 million rows (hundreds of MB) per 19-year
 instrument and is not a scanner timeframe, so it is not produced; tick-level detail for backtest
 exits is a later story.

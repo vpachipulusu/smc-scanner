@@ -105,6 +105,7 @@ class WalkForwardRunner(Protocol):
         split: SplitSpec,
         seed: int,
         stride: int,
+        lookback: int | None = None,
     ) -> WalkForwardResult: ...
 
 
@@ -119,8 +120,10 @@ def run_walk_forward(
     split: SplitSpec,
     seed: int,
     stride: int,
+    lookback: int | None = None,
 ) -> WalkForwardResult:
-    """``walkforward.walk_forward`` as a ``WalkForwardRunner``: the split unpacked."""
+    """``walkforward.walk_forward`` as a ``WalkForwardRunner``: the split unpacked. The API
+    never passes ``lookback``; the CLI's ``--lookback`` does."""
     return walk_forward(
         loader,
         list(symbols),
@@ -132,6 +135,7 @@ def run_walk_forward(
         train_fraction=split.train_fraction,
         seed=seed,
         stride=stride,
+        lookback=lookback,
     )
 
 

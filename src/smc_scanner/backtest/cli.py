@@ -26,6 +26,7 @@ from rich.table import Table
 from rich.text import Text
 
 from smc_scanner.ai.store import StoreError, db_path_from_env
+from smc_scanner.backtest._common import check_lookback
 from smc_scanner.backtest.jobs import (
     MAX_SEED,
     SPLIT_KINDS,
@@ -53,6 +54,7 @@ from smc_scanner.config import (
     DEFAULT_BARS,
     DEFAULT_SOURCE,
     DEFAULT_TIMEFRAME,
+    MAX_BACKTEST_BARS,
     MAX_BARS,
     MAX_SYMBOLS,
     MIN_BARS,
@@ -90,7 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--bars",
         type=int,
-        help=f"candles per symbol (default {MAX_BARS} for csv, else {DEFAULT_BARS})",
+        help=f"candles per symbol (default {MAX_BARS} for csv, else {DEFAULT_BARS}; with "
+        f"--lookback up to {MAX_BACKTEST_BARS}, and for csv the whole file up to that cap)",
     )
     parser.add_argument(
         "--strategy",
@@ -114,6 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-fraction", type=float, default=DEFAULT_TRAIN_FRACTION)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--stride", type=int, default=1, help="replay every Nth bar (faster)")
+    parser.add_argument(
+        "--lookback",
+        type=int,
+        metavar="BARS",
+        help="scan only the last BARS candles at each replay step, as a live scan with "
+        "--bars BARS would (default: the whole history so far)",
+    )
     parser.add_argument("--out", type=Path, metavar="DIR", help="write CSVs and a JSON summary")
     parser.add_argument("--save", action="store_true", help="store the summaries (SMC_DB_PATH)")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -133,6 +143,7 @@ class Settings:
     split: SplitSpec
     seed: int
     stride: int
+    lookback: int | None  # None: every replay step scans the whole history so far
 
 
 def _check_symbols(symbols: Sequence[str], parser: argparse.ArgumentParser) -> None:
@@ -143,12 +154,23 @@ def _check_symbols(symbols: Sequence[str], parser: argparse.ArgumentParser) -> N
         parser.error("--symbols must be 1-32 of A-Z, a-z, 0-9 or . _ # @ -")
 
 
-def _settings(args: argparse.Namespace, parser: argparse.ArgumentParser) -> Settings:
-    bars = (
-        args.bars if args.bars is not None else MAX_BARS if args.source == "csv" else DEFAULT_BARS
+def _bars(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """``--bars``, or its default: the whole csv file (up to the cap) or ``DEFAULT_BARS``."""
+    max_bars = MAX_BARS if args.lookback is None else MAX_BACKTEST_BARS
+    bars: int = (
+        args.bars if args.bars is not None else max_bars if args.source == "csv" else DEFAULT_BARS
     )
-    if not MIN_BARS <= bars <= MAX_BARS:
-        parser.error(f"--bars must be between {MIN_BARS} and {MAX_BARS}")
+    if not MIN_BARS <= bars <= max_bars:
+        parser.error(f"--bars must be between {MIN_BARS} and {max_bars}")
+    return bars
+
+
+def _settings(args: argparse.Namespace, parser: argparse.ArgumentParser) -> Settings:
+    try:
+        check_lookback(args.lookback)
+    except ValueError:
+        parser.error(f"--lookback must be an integer between {MIN_BARS} and {MAX_BARS}")
+    bars = _bars(args, parser)
     if not 0 <= args.seed <= MAX_SEED:
         parser.error(f"--seed must be between 0 and {MAX_SEED}")
     if args.stride < 1:
@@ -178,6 +200,7 @@ def _settings(args: argparse.Namespace, parser: argparse.ArgumentParser) -> Sett
         split,
         args.seed,
         args.stride,
+        args.lookback,
     )
 
 
@@ -224,6 +247,7 @@ def _pooled(
         rules,
         seed=settings.seed,
         stride=settings.stride,
+        lookback=settings.lookback,
     )
     return report.to_dict()
 
@@ -252,6 +276,7 @@ def run_strategy(
         split=settings.split,
         seed=settings.seed,
         stride=settings.stride,
+        lookback=settings.lookback,
     )
     stats, verdict = result.to_dict(), parse_verdict(result.verdict)
     if with_rows:
@@ -346,6 +371,7 @@ def write_outputs(results: Sequence[StrategyResult], settings: Settings, out: Pa
         "split": asdict(settings.split),
         "seed": settings.seed,
         "stride": settings.stride,
+        "lookback": settings.lookback,
         "strategies": [
             {
                 "strategy": result.strategy,
@@ -398,6 +424,7 @@ def save_results(
                 stats=_renamed(without_signals(result.stats), names),
                 verdict=result.verdict,
                 duration_seconds=result.duration_seconds,
+                lookback=settings.lookback,
             )
         )
 

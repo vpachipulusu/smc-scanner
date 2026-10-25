@@ -9,9 +9,10 @@ import pytest
 from backtest_job_support import SECRET, FakeRunner
 
 from smc_scanner.backtest import cli
-from smc_scanner.backtest.report import ROW_COLUMNS
+from smc_scanner.backtest.outcome import ExitRules
+from smc_scanner.backtest.report import ROW_COLUMNS, run_backtest
 from smc_scanner.backtest.store import SqliteBacktestRepository
-from smc_scanner.config import MAX_BARS
+from smc_scanner.config import MAX_BACKTEST_BARS, MAX_BARS
 from smc_scanner.loaders import LoaderError
 from smc_scanner.loaders.demo import DemoLoader
 from smc_scanner.strategy.builtin import BUILTIN_STRATEGIES
@@ -89,6 +90,53 @@ def test_the_rules_split_seed_and_stride_reach_the_runner(runner: FakeRunner) ->
     assert rules.spread == 0.0001
     assert (call["split"].kind, call["split"].train_fraction) == ("symbols", 0.5)
     assert (call["seed"], call["stride"], call["bars"]) == (9, 4, 200)
+
+
+def test_lookback_reaches_the_runner_and_lifts_the_bars_cap(
+    runner: FakeRunner, tmp_path: Path
+) -> None:
+    args = ["--source", "demo", "--symbols", "EURUSD", "--bars", str(MAX_BARS + 100)]
+    out = tmp_path / "results"
+    windowed = [*args, "--strategy", "smc-default", "--lookback", "500", "--stride", "500"]
+
+    code = cli.main([*windowed, "--save"])
+    written = cli.main([*windowed, "--out", str(out)])
+
+    assert code == written == cli.EXIT_OK
+    call = runner.calls[0]
+    assert (call["lookback"], call["bars"], call["loaded"]) == (500, MAX_BARS + 100, [5100])
+    assert SqliteBacktestRepository(tmp_path / "smc.db").list()[0].lookback == 500
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["lookback"] == 500 and summary["bars"] == MAX_BARS + 100
+    pooled = run_backtest(
+        DemoLoader(),
+        ["EURUSD"],
+        "1h",
+        MAX_BARS + 100,
+        BUILTIN_STRATEGIES["smc-default"],
+        ExitRules(),
+        stride=500,
+        lookback=500,
+    )  # the --out rows come from this same windowed backtest
+    assert summary["strategies"][0]["stats"]["pooled"] == pooled.to_dict()["pooled"]
+
+
+def test_without_lookback_the_runner_gets_none(runner: FakeRunner, tmp_path: Path) -> None:
+    assert cli.main([*DEMO, "--strategy", "smc-default", "--save"]) == cli.EXIT_OK
+
+    assert runner.calls[0]["lookback"] is None
+    assert SqliteBacktestRepository(tmp_path / "smc.db").list()[0].lookback is None
+
+
+def test_a_csv_lookback_run_reads_the_whole_file_by_default(
+    runner: FakeRunner, tmp_path: Path
+) -> None:
+    path = _csv(tmp_path / "a.csv", None, rows=MAX_BARS + 40)
+
+    assert cli.main(["--source", "csv", "--symbols", str(path), "--lookback", "100"]) == 0
+
+    call = runner.calls[0]
+    assert call["bars"] == MAX_BACKTEST_BARS and call["loaded"] == [MAX_BARS + 40]
 
 
 def test_out_writes_a_csv_per_strategy_and_a_summary(runner: FakeRunner, tmp_path: Path) -> None:
@@ -206,6 +254,9 @@ def test_csv_spread_ignores_a_non_numeric_column(tmp_path: Path) -> None:
     [
         ["--bars", "1"],
         ["--bars", str(MAX_BARS + 1)],
+        ["--bars", str(MAX_BACKTEST_BARS + 1), "--lookback", "500"],
+        ["--lookback", "14"],
+        ["--lookback", str(MAX_BARS + 1)],
         ["--seed", "-1"],
         ["--seed", str(2**32)],
         ["--stride", "0"],
