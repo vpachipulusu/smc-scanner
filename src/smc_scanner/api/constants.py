@@ -1,16 +1,15 @@
 """Limits, messages and settings shared by the API modules."""
 
-import re
 from typing import Any
 
+from smc_scanner.config import MAX_SYMBOLS as MAX_SYMBOLS  # re-exported: the API's own limits
+from smc_scanner.config import SYMBOL_PATTERN as SYMBOL_PATTERN
 from smc_scanner.config import (
     ApiSource,
 )
 
 API_SOURCES: tuple[ApiSource, ...] = ("mt5", "demo")
-MAX_SYMBOLS = 50
 MAX_SYMBOLS_QUERY_LENGTH = 1000
-SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9._#@\-]{1,32}$")
 DEFAULT_ALLOWED_HOSTS = "127.0.0.1,localhost"
 INTERNAL_KEY_HEADER = "X-Internal-Key"
 INTERNAL_KEY_ENV = "SMC_INTERNAL_KEY"
@@ -90,3 +89,18 @@ STRATEGY_LIMIT_MESSAGE = "Strategy limit reached"
 STRATEGY_STORE_MESSAGE = "Strategy database unavailable"
 UNKNOWN_STRATEGY_MESSAGE = "Unknown strategy"
 INVALID_STRATEGY_MESSAGE = "Invalid strategy"
+
+BACKTESTS_RATE_LIMIT = (60, 60.0)  # the backtest reads: list, get (polling), the badge
+BACKTESTS_CREATE_RATE_LIMIT = (6, 60.0)  # starting a run, apart so polling never starves it
+DEFAULT_BACKTESTS_LIMIT = 50
+MAX_BACKTESTS_LIMIT = 200
+MAX_BACKTEST_STRIDE = 100
+MAX_BACKTEST_SEED = 2**32 - 1
+# symbols x bars^2 / stride: each replayed prefix costs about its length. One 5000-bar symbol at
+# stride 1 is 2.5e7; 1.2e8 is about 15 minutes of replay at today's speed (fast FVG, TRAD-48).
+MAX_BACKTEST_COST = 120_000_000
+BACKTEST_NOT_FOUND_MESSAGE = "Backtest not found"
+NO_BACKTEST_MESSAGE = "No finished backtest for this strategy"
+BACKTEST_RUNNING_MESSAGE = "Backtest already running"
+BACKTEST_STORE_MESSAGE = "Backtest database unavailable"
+BACKTEST_TOO_LARGE_MESSAGE = "Backtest too large; use fewer symbols or bars, or a larger stride"

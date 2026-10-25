@@ -3061,6 +3061,494 @@
           }
         }
       }
+    },
+    "/backtests": {
+      "get": {
+        "tags": [
+          "backtests"
+        ],
+        "summary": "List Backtests",
+        "description": "Backtests, newest first, of one strategy or of all, as summaries (``GET\n/backtests/{id}`` has the full results). Rows of deleted strategies are hidden.",
+        "operationId": "list_backtests",
+        "parameters": [
+          {
+            "name": "strategy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,31}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Backtest database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many backtest requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "backtests"
+        ],
+        "summary": "Create Backtest",
+        "description": "Start a walk-forward backtest of one strategy in the background and return its pending\nrow (202, with ``Location``). One runs at a time: another request meanwhile gets 409. Poll\n``GET /backtests/{id}`` for the status. The cost, symbols x bars^2 / stride, is capped\n(422): each replayed prefix costs about as much as its length.",
+        "operationId": "create_backtest",
+        "parameters": [
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted: the pending row; poll the Location header's URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestOut"
+                }
+              }
+            },
+            "headers": {
+              "Location": {
+                "description": "The new backtest, /backtests/{id}",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request: e.g. the csv source, an unknown strategy, a symbol split with one symbol, or a run over the cost cap",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Backtest or strategy database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Backtest already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many backtests started; see Retry-After",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/backtests/{backtest_id}": {
+      "get": {
+        "tags": [
+          "backtests"
+        ],
+        "summary": "Get Backtest",
+        "description": "One backtest with its status and results; poll it until ``done`` or ``failed``.",
+        "operationId": "get_backtest",
+        "parameters": [
+          {
+            "name": "backtest_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Backtest Id"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Backtest database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No backtest with that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many backtest requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/strategies/{slug}/backtest": {
+      "get": {
+        "tags": [
+          "backtests"
+        ],
+        "summary": "Get Strategy Backtest",
+        "description": "The latest finished backtest of a strategy, as a badge: verdict, expectancy, its\ninterval and the trade count.",
+        "operationId": "get_strategy_backtest",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "X-Internal-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestSummaryOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong internal key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Backtest database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such strategy, or no finished backtest of it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many backtest requests; see the Retry-After header",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3688,6 +4176,744 @@
         ],
         "title": "AnalysisPage"
       },
+      "BacktestCreate": {
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+            "title": "Strategy"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "mt5",
+              "demo"
+            ],
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "enum": [
+              "5m",
+              "15m",
+              "30m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "title": "Tf",
+            "default": "1h"
+          },
+          "bars": {
+            "type": "integer",
+            "maximum": 5000.0,
+            "minimum": 15.0,
+            "title": "Bars",
+            "default": 500
+          },
+          "symbols": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._#@\\-]{1,32}$"
+                },
+                "type": "array",
+                "maxItems": 50,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbols"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/ExitRulesIn"
+          },
+          "split": {
+            "type": "string",
+            "enum": [
+              "time",
+              "symbols"
+            ],
+            "title": "Split",
+            "default": "time"
+          },
+          "train_fraction": {
+            "type": "number",
+            "maximum": 0.9,
+            "minimum": 0.3,
+            "title": "Train Fraction",
+            "default": 0.6
+          },
+          "seed": {
+            "type": "integer",
+            "maximum": 4294967295.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "default": 0
+          },
+          "stride": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Stride",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "strategy",
+          "source"
+        ],
+        "title": "BacktestCreate",
+        "description": "A backtest to run in the background. ``source`` is demo or mt5 only: the API never takes\nfile paths. Without ``symbols`` the source's watchlist is used; duplicates are dropped."
+      },
+      "BacktestList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "BacktestList"
+      },
+      "BacktestListItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Strategy"
+          },
+          "created_at": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Created At"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "fail",
+                  "insufficient"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "expectancy_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectancy R"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "low_sample": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low Sample"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "title": "Tf"
+          },
+          "bars": {
+            "type": "integer",
+            "title": "Bars"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "strategy",
+          "created_at",
+          "verdict",
+          "n",
+          "expectancy_r",
+          "ci_low",
+          "ci_high",
+          "low_sample",
+          "status",
+          "source",
+          "tf",
+          "bars",
+          "duration_seconds",
+          "error"
+        ],
+        "title": "BacktestListItem",
+        "description": "A row of ``GET /backtests``: the badge figures plus how the run went. The full\nresults are on ``GET /backtests/{id}``."
+      },
+      "BacktestOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Created At"
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Strategy"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "tf": {
+            "type": "string",
+            "title": "Tf"
+          },
+          "bars": {
+            "type": "integer",
+            "title": "Bars"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Symbols"
+          },
+          "rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExitRulesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "split": {
+            "type": "string",
+            "title": "Split"
+          },
+          "train_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Train Fraction"
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed"
+          },
+          "stride": {
+            "type": "integer",
+            "title": "Stride"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "fail",
+                  "insufficient"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "results": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacktestResultsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "strategy",
+          "source",
+          "tf",
+          "bars",
+          "symbols",
+          "rules",
+          "split",
+          "train_fraction",
+          "seed",
+          "stride",
+          "status",
+          "verdict",
+          "duration_seconds",
+          "error",
+          "results"
+        ],
+        "title": "BacktestOut",
+        "description": "One backtest row. ``status`` goes pending, running, then done or failed; ``results`` and\n``verdict`` are set once done, ``error`` (a fixed message) once failed."
+      },
+      "BacktestResultsOut": {
+        "properties": {
+          "pooled": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacktestStatsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "in_sample": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacktestStatsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "out_of_sample": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacktestStatsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "baselines": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/BacktestStatsOut"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baselines"
+          }
+        },
+        "type": "object",
+        "title": "BacktestResultsOut",
+        "description": "The stored statistics: in-sample and out-of-sample, the null baselines on the\nout-of-sample part (keyed ``random`` and ``flipped``), and pooled over the whole run (only\nin CLI runs). Parts the run did not produce are null."
+      },
+      "BacktestStatsOut": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "n_open": {
+            "type": "integer",
+            "title": "N Open"
+          },
+          "n_void": {
+            "type": "integer",
+            "title": "N Void"
+          },
+          "low_sample": {
+            "type": "boolean",
+            "title": "Low Sample"
+          },
+          "hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate"
+          },
+          "average_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average R"
+          },
+          "expectancy_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectancy R"
+          },
+          "median_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median R"
+          },
+          "best_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best R"
+          },
+          "worst_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worst R"
+          },
+          "total_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total R"
+          },
+          "profit_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Factor"
+          },
+          "max_drawdown_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Drawdown R"
+          },
+          "avg_bars_held": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Bars Held"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "n_open",
+          "n_void",
+          "low_sample",
+          "hit_rate",
+          "average_r",
+          "expectancy_r",
+          "median_r",
+          "best_r",
+          "worst_r",
+          "total_r",
+          "profit_factor",
+          "max_drawdown_r",
+          "avg_bars_held",
+          "ci_low",
+          "ci_high"
+        ],
+        "title": "BacktestStatsOut",
+        "description": "``BacktestStats``: R-based statistics of the closed trades; ratios are null at n = 0."
+      },
+      "BacktestSummaryOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Strategy"
+          },
+          "created_at": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Created At"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "fail",
+                  "insufficient"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "expectancy_r": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectancy R"
+          },
+          "ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Low"
+          },
+          "ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci High"
+          },
+          "low_sample": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low Sample"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "strategy",
+          "created_at",
+          "verdict",
+          "n",
+          "expectancy_r",
+          "ci_low",
+          "ci_high",
+          "low_sample"
+        ],
+        "title": "BacktestSummaryOut",
+        "description": "The badge of a strategy's latest finished backtest: its verdict and the out-of-sample\nexpectancy (the pooled one when the run had no out-of-sample part), with its interval."
+      },
       "CalendarEventOut": {
         "properties": {
           "currency": {
@@ -4081,6 +5307,82 @@
         ],
         "title": "ErrorResponse",
         "description": "Body of every error response."
+      },
+      "ExitRulesIn": {
+        "properties": {
+          "rr": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Rr",
+            "default": 2.0
+          },
+          "stop_buffer_atr": {
+            "type": "number",
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Stop Buffer Atr",
+            "default": 0.0
+          },
+          "time_stop_bars": {
+            "type": "integer",
+            "maximum": 5000.0,
+            "minimum": 1.0,
+            "title": "Time Stop Bars",
+            "default": 50
+          },
+          "spread": {
+            "type": "number",
+            "maximum": 1000000000.0,
+            "minimum": 0.0,
+            "title": "Spread",
+            "default": 0.0
+          },
+          "min_risk_atr": {
+            "type": "number",
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Min Risk Atr",
+            "default": 0.1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExitRulesIn",
+        "description": "How a signal becomes a trade, within ``ExitRules``'s limits. ``spread`` is in price\nunits, paid once per trade."
+      },
+      "ExitRulesOut": {
+        "properties": {
+          "rr": {
+            "type": "number",
+            "title": "Rr"
+          },
+          "stop_buffer_atr": {
+            "type": "number",
+            "title": "Stop Buffer Atr"
+          },
+          "time_stop_bars": {
+            "type": "integer",
+            "title": "Time Stop Bars"
+          },
+          "spread": {
+            "type": "number",
+            "title": "Spread"
+          },
+          "min_risk_atr": {
+            "type": "number",
+            "title": "Min Risk Atr"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rr",
+          "stop_buffer_atr",
+          "time_stop_bars",
+          "spread",
+          "min_risk_atr"
+        ],
+        "title": "ExitRulesOut"
       },
       "HealthResponse": {
         "properties": {

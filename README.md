@@ -65,9 +65,16 @@ contract is `nextjs-frontend/openapi.json`):
 | `POST /schedules/{id}/run` | run once now; 409 if running or a scan holds the lock, 429 + `Retry-After` within 10 s of the last run. A failed run still answers 200 with `status: "failed"`; read the job log |
 | `GET /schedules/{id}/logs` | job log, newest first, `limit` (50, max 100) and `cursor` |
 | `POST /telegram/test` | send a fixed test message (503 without `TELEGRAM_BOT_TOKEN`, 422 without a chat id, 429 within 5 s of the last, 502 if Telegram refuses) |
+| `POST /backtests` | start a walk-forward backtest of one strategy in the background: 202 with the pending row and `Location`. 409 while one runs, 422 for `csv`, bad input or a run over the cost cap (symbols x bars² / stride), 503 if the database is unusable; 6 per 60 s |
+| `GET /backtests`, `GET /backtests/{id}` | summaries newest first (`strategy`, `limit` 50, max 200); one run with its status (`pending`, `running`, `done`, `failed`) and results. Poll the id until done |
+| `GET /strategies/{slug}/backtest` | the latest finished run of a strategy as a badge (verdict, out-of-sample expectancy and interval); 404 when there is none |
 
 `POST /analyse` also answers 502 when the provider fails for the whole run, and run-now 503 while
 the scheduler shuts down.
+
+Backtests run one at a time per process on a background thread, so run the API with a single
+worker (a warning is logged otherwise): a second worker would mark the first one's run failed.
+A run left unfinished by a restart is marked failed at the next startup.
 
 #### Environment variables
 
@@ -207,6 +214,20 @@ Header `time,open,high,low,close[,volume]`, ISO-8601 times, any order (sorted on
 history per timeframe can be built from Dukascopy tick exports with `smc-resample-ticks`; see
 [docs/data.md](docs/data.md).
 
+### Backtest
+
+`smc-backtest` replays strategies bar by bar, walks them forward (in-sample vs out-of-sample,
+against random-entry and direction-flipped baselines) and prints one table with a verdict:
+
+```bash
+uv run smc-backtest --source csv --symbols data/GBPUSD_1h.csv --tf 1h --bars 5000 --stride 5 --strategy smc-default --out backtests --save
+```
+
+`--out` writes one CSV of per-signal rows per strategy and `summary.json`; `--save` stores the
+summaries in `SMC_DB_PATH`, where `GET /backtests` lists them. With csv files the spread
+defaults to the mean `spread` column. A run at stride 1 over 5000 bars takes minutes per
+symbol; `--stride` trades precision for speed.
+
 ## Quick start (no terminal, no key)
 
 ```bash
@@ -280,6 +301,7 @@ be escaped by whatever renders it.
 | AI verdicts | `ai/` (`prompt.py`, `context.py`, `providers.py`, `verdict.py`, `analyst.py`, `store.py`, `budget.py`) |
 | Shared | `config.py`, `ratelimit.py` (API rate limiter) |
 | Scheduler | `schedule/` (`timing.py`, `rules.py`, `store.py`, `joblog.py`, `runner.py`) |
+| Backtest | `backtest/` (`replay.py`, `outcome.py`, `stats.py`, `report.py`, `baseline.py`, `walkforward.py`, `sweep.py`, `store.py`, `jobs.py`, `cli.py` for `smc-backtest`) |
 | Telegram | `notify/telegram.py` |
 | HTTP API | `api/`, `openapi_export.py` |
 | Web | `nextjs-frontend/src/app` (`/scan`, `/analyses/[id]`, dashboard at the root page), `src/lib/api` |

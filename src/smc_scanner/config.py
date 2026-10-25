@@ -1,5 +1,6 @@
 """Constants and timeframe maps shared by the scanner, loaders, CLI and API."""
 
+import re
 from typing import Final, Literal
 
 Timeframe = Literal["5m", "15m", "30m", "1h", "4h", "1d"]
@@ -50,6 +51,9 @@ DEFAULT_DEMO_SYMBOLS: Final[tuple[str, ...]] = ("EURUSD", "XAUUSD", "NAS100", "U
 # Fewest bars that make a scan possible at all: ATR(14) needs a previous close.
 MIN_BARS: Final[int] = ATR_PERIOD + 1
 MAX_BARS: Final[int] = 5000
+# What the API accepts as a symbol, and how many per request; the CLI checks the same.
+MAX_SYMBOLS: Final[int] = 50
+SYMBOL_PATTERN: Final = re.compile(r"^[A-Za-z0-9._#@\-]{1,32}$")
 MAX_SWING_LENGTH: Final[int] = 100
 MAX_NEAR_ATR: Final[float] = 5.0
 

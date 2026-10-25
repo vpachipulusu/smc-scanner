@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateJournalEntryData, CreateJournalEntryErrors, CreateJournalEntryResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, CreateStrategyData, CreateStrategyErrors, CreateStrategyResponses, DeleteJournalEntryData, DeleteJournalEntryErrors, DeleteJournalEntryResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, DeleteStrategyData, DeleteStrategyErrors, DeleteStrategyResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetCalendarData, GetCalendarErrors, GetCalendarResponses, GetJournalEntryData, GetJournalEntryErrors, GetJournalEntryResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, GetStrategyData, GetStrategyErrors, GetStrategyResponses, HealthData, HealthErrors, HealthResponses, JournalStatsData, JournalStatsErrors, JournalStatsResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListJournalData, ListJournalErrors, ListJournalResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, ListStrategiesData, ListStrategiesErrors, ListStrategiesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateJournalEntryData, UpdateJournalEntryErrors, UpdateJournalEntryResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses, UpdateStrategyData, UpdateStrategyErrors, UpdateStrategyResponses } from './types.gen';
+import type { AnalyseData, AnalyseErrors, AnalyseResponses, ConfigData, ConfigErrors, ConfigResponses, CreateBacktestData, CreateBacktestErrors, CreateBacktestResponses, CreateJournalEntryData, CreateJournalEntryErrors, CreateJournalEntryResponses, CreateScheduleData, CreateScheduleErrors, CreateScheduleResponses, CreateStrategyData, CreateStrategyErrors, CreateStrategyResponses, DeleteJournalEntryData, DeleteJournalEntryErrors, DeleteJournalEntryResponses, DeleteScheduleData, DeleteScheduleErrors, DeleteScheduleResponses, DeleteStrategyData, DeleteStrategyErrors, DeleteStrategyResponses, GetAnalysisData, GetAnalysisErrors, GetAnalysisResponses, GetBacktestData, GetBacktestErrors, GetBacktestResponses, GetCalendarData, GetCalendarErrors, GetCalendarResponses, GetJournalEntryData, GetJournalEntryErrors, GetJournalEntryResponses, GetScheduleData, GetScheduleErrors, GetScheduleResponses, GetStrategyBacktestData, GetStrategyBacktestErrors, GetStrategyBacktestResponses, GetStrategyData, GetStrategyErrors, GetStrategyResponses, HealthData, HealthErrors, HealthResponses, JournalStatsData, JournalStatsErrors, JournalStatsResponses, ListAnalysesData, ListAnalysesErrors, ListAnalysesResponses, ListBacktestsData, ListBacktestsErrors, ListBacktestsResponses, ListJournalData, ListJournalErrors, ListJournalResponses, ListScheduleLogsData, ListScheduleLogsErrors, ListScheduleLogsResponses, ListSchedulesData, ListSchedulesErrors, ListSchedulesResponses, ListStrategiesData, ListStrategiesErrors, ListStrategiesResponses, RunScheduleNowData, RunScheduleNowErrors, RunScheduleNowResponses, ScanData, ScanErrors, ScanResponses, SendTelegramTestData, SendTelegramTestErrors, SendTelegramTestResponses, UpdateJournalEntryData, UpdateJournalEntryErrors, UpdateJournalEntryResponses, UpdateScheduleData, UpdateScheduleErrors, UpdateScheduleResponses, UpdateStrategyData, UpdateStrategyErrors, UpdateStrategyResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -282,3 +282,43 @@ export const updateStrategy = <ThrowOnError extends boolean = false>(options: Op
         ...options.headers
     }
 });
+
+/**
+ * List Backtests
+ *
+ * Backtests, newest first, of one strategy or of all, as summaries (``GET
+ * /backtests/{id}`` has the full results). Rows of deleted strategies are hidden.
+ */
+export const listBacktests = <ThrowOnError extends boolean = false>(options?: Options<ListBacktestsData, ThrowOnError>) => (options?.client ?? client).get<ListBacktestsResponses, ListBacktestsErrors, ThrowOnError>({ url: '/backtests', ...options });
+
+/**
+ * Create Backtest
+ *
+ * Start a walk-forward backtest of one strategy in the background and return its pending
+ * row (202, with ``Location``). One runs at a time: another request meanwhile gets 409. Poll
+ * ``GET /backtests/{id}`` for the status. The cost, symbols x bars^2 / stride, is capped
+ * (422): each replayed prefix costs about as much as its length.
+ */
+export const createBacktest = <ThrowOnError extends boolean = false>(options: Options<CreateBacktestData, ThrowOnError>) => (options.client ?? client).post<CreateBacktestResponses, CreateBacktestErrors, ThrowOnError>({
+    url: '/backtests',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Backtest
+ *
+ * One backtest with its status and results; poll it until ``done`` or ``failed``.
+ */
+export const getBacktest = <ThrowOnError extends boolean = false>(options: Options<GetBacktestData, ThrowOnError>) => (options.client ?? client).get<GetBacktestResponses, GetBacktestErrors, ThrowOnError>({ url: '/backtests/{backtest_id}', ...options });
+
+/**
+ * Get Strategy Backtest
+ *
+ * The latest finished backtest of a strategy, as a badge: verdict, expectancy, its
+ * interval and the trade count.
+ */
+export const getStrategyBacktest = <ThrowOnError extends boolean = false>(options: Options<GetStrategyBacktestData, ThrowOnError>) => (options.client ?? client).get<GetStrategyBacktestResponses, GetStrategyBacktestErrors, ThrowOnError>({ url: '/strategies/{slug}/backtest', ...options });

@@ -4,7 +4,7 @@ import logging
 import os
 import secrets
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from functools import partial
@@ -35,6 +35,9 @@ from smc_scanner.api.constants import (
     AI_UNAVAILABLE_MESSAGE,
     ANALYSE_LOCK_POLL_SECONDS,
     ANALYSE_RATE_LIMIT,
+    BACKTEST_STORE_MESSAGE,
+    BACKTESTS_CREATE_RATE_LIMIT,
+    BACKTESTS_RATE_LIMIT,
     BUDGET_CONFIG_MESSAGE,
     BUDGET_MESSAGE,
     CALENDAR_RATE_LIMIT,
@@ -55,6 +58,20 @@ from smc_scanner.api.constants import (
     STRATEGIES_RATE_LIMIT,
 )
 from smc_scanner.api.strategy_deps import strategy_service_for
+from smc_scanner.backtest.jobs import (
+    INTERRUPTED_MESSAGE,
+    BacktestJobs,
+    WalkForwardRunner,
+    walk_forward_runner,
+)
+from smc_scanner.backtest.store import (
+    BacktestRecord,
+    BacktestRepository,
+    JsonObject,
+    NewBacktest,
+    SqliteBacktestRepository,
+    Verdict,
+)
 from smc_scanner.econ_calendar.forexfactory import ForexFactoryCalendarSource
 from smc_scanner.econ_calendar.models import CalendarEvent, CalendarSource
 from smc_scanner.econ_calendar.service import CalendarService
@@ -108,6 +125,8 @@ RATE_LIMITERS: dict[str, RateLimiter] = {
     "journal_stats": RateLimiter(*JOURNAL_STATS_RATE_LIMIT),
     "calendar": RateLimiter(*CALENDAR_RATE_LIMIT),
     "strategies": RateLimiter(*STRATEGIES_RATE_LIMIT),
+    "backtests": RateLimiter(*BACKTESTS_RATE_LIMIT),
+    "backtests_create": RateLimiter(*BACKTESTS_CREATE_RATE_LIMIT),
 }
 
 
@@ -137,6 +156,8 @@ JournalRateDep = Annotated[None, Depends(_rate_limit("journal"))]
 JournalStatsRateDep = Annotated[None, Depends(_rate_limit("journal_stats"))]
 CalendarRateDep = Annotated[None, Depends(_rate_limit("calendar"))]
 StrategiesRateDep = Annotated[None, Depends(_rate_limit("strategies"))]
+BacktestsRateDep = Annotated[None, Depends(_rate_limit("backtests"))]
+BacktestsCreateRateDep = Annotated[None, Depends(_rate_limit("backtests_create"))]
 
 
 def require_internal_key(
@@ -448,3 +469,121 @@ def get_strategy_service() -> StrategyService:
 
 
 StrategyServiceDep = Annotated[StrategyService, Depends(get_strategy_service)]
+
+
+def _backtest_store_unavailable(exc: StoreError) -> HTTPException:
+    log.error("backtest store failed: %s", exc)  # the path stays in the log
+    return HTTPException(status_code=503, detail=BACKTEST_STORE_MESSAGE)
+
+
+@contextmanager
+def backtest_store_errors() -> Iterator[None]:
+    """Map a store failure (backtests or the strategies they are filtered by) to a fixed 503."""
+    try:
+        yield
+    except StoreError as exc:
+        raise _backtest_store_unavailable(exc) from exc
+
+
+_backtest_stores: dict[FsPath, SqliteBacktestRepository] = {}  # one per path: schema set up once
+
+
+def _backtest_store_for(path: FsPath) -> SqliteBacktestRepository:
+    with _store_init_lock:  # first-time schema setup must not race the other stores
+        store = _backtest_stores.get(path)
+        if store is None:
+            store = SqliteBacktestRepository(path)
+            _backtest_stores[path] = store
+        return store
+
+
+class _LazyBacktestRepository:
+    """The process-wide ``SqliteBacktestRepository`` of ``SMC_DB_PATH``, looked up on first use
+    inside the route's ``backtest_store_errors``: the request is validated (422) before the file
+    is touched (503). A failed open is retried by the next request."""
+
+    def __init__(self) -> None:
+        self._opened: SqliteBacktestRepository | None = None
+
+    def _repository(self) -> SqliteBacktestRepository:
+        if self._opened is None:
+            self._opened = _backtest_store_for(db_path_from_env())
+        return self._opened
+
+    def insert(self, run: NewBacktest) -> BacktestRecord:
+        return self._repository().insert(run)
+
+    def get(self, backtest_id: int) -> BacktestRecord | None:
+        return self._repository().get(backtest_id)
+
+    def list(
+        self,
+        *,
+        strategy: str | None = None,
+        visible: Sequence[str] | None = None,
+        limit: int = 50,
+    ) -> list[BacktestRecord]:
+        return self._repository().list(strategy=strategy, visible=visible, limit=limit)
+
+    def latest_done(self, strategy: str) -> BacktestRecord | None:
+        return self._repository().latest_done(strategy)
+
+    def mark_running(self, backtest_id: int) -> None:
+        self._repository().mark_running(backtest_id)
+
+    def finish(
+        self, backtest_id: int, stats: JsonObject, verdict: Verdict | None, duration: float
+    ) -> None:
+        self._repository().finish(backtest_id, stats, verdict, duration)
+
+    def fail(self, backtest_id: int, error: str, duration: float | None) -> None:
+        self._repository().fail(backtest_id, error, duration)
+
+    def fail_unfinished(self, error: str) -> int:
+        return self._repository().fail_unfinished(error)
+
+
+def get_backtest_store() -> BacktestRepository:
+    """The backtest store on the shared database file, opened on first use. Tests override
+    this dependency."""
+    return _LazyBacktestRepository()
+
+
+# One per process, so the one-run-at-a-time guard is shared by every request. Loading takes the
+# scan lock: the MetaTrader 5 connection is process-wide.
+_backtest_jobs = BacktestJobs(load_lock=_scan_lock)
+
+
+def get_backtest_jobs() -> BacktestJobs:
+    """The process-wide backtest runner. Tests override this with one that runs inline."""
+    return _backtest_jobs
+
+
+def sweep_interrupted_backtests() -> int:
+    """At startup: mark every pending or running backtest failed, since no job runs in a process
+    that has just started (single worker). A missing database file is left alone, and a store
+    failure is only logged: the API still starts. The count swept."""
+    try:
+        path = db_path_from_env()
+        if not path.is_file() or _backtest_jobs.running:
+            return 0
+        swept = _backtest_store_for(path).fail_unfinished(INTERRUPTED_MESSAGE)
+    except StoreError as exc:
+        log.warning("interrupted backtests not swept: %s", type(exc).__name__)
+        return 0
+    if swept:
+        log.warning("marked %d interrupted backtest(s) failed", swept)
+    return swept
+
+
+RunnerFactory = Callable[[], WalkForwardRunner]
+
+
+def get_runner_factory() -> RunnerFactory:
+    """The walk-forward runner's factory. Tests override this dependency with a fake."""
+    return walk_forward_runner
+
+
+BacktestStoreDep = Annotated[BacktestRepository, Depends(get_backtest_store)]
+BacktestJobsDep = Annotated[BacktestJobs, Depends(get_backtest_jobs)]
+RunnerFactoryDep = Annotated[RunnerFactory, Depends(get_runner_factory)]

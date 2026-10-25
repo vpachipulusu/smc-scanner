@@ -46,6 +46,10 @@ def test_operation_ids_are_plain_function_names() -> None:
         "create_strategy",
         "update_strategy",
         "delete_strategy",
+        "list_backtests",
+        "get_backtest",
+        "get_strategy_backtest",
+        "create_backtest",
     }
 
 
