@@ -31,7 +31,15 @@ from smc_scanner.api.constants import (
     SCHEDULER_FALSY,
     SCHEDULER_TRUTHY,
 )
-from smc_scanner.api.routes import analyses, calendar, journal, scan, schedules, strategies
+from smc_scanner.api.routes import (
+    analyses,
+    backtests,
+    calendar,
+    journal,
+    scan,
+    schedules,
+    strategies,
+)
 from smc_scanner.api.schemas import ERROR_RESPONSES
 
 log = logging.getLogger(__name__)
@@ -97,6 +105,18 @@ def _argv_host(argv: Sequence[str]) -> str:
     return ""
 
 
+def _workers(env: Mapping[str, str], argv: Sequence[str]) -> int:
+    """How many workers a launcher asked for: ``--workers N`` or ``WEB_CONCURRENCY``; 1 if
+    neither says (or says something unreadable)."""
+    raw = env.get("WEB_CONCURRENCY", "").strip()
+    for index, arg in enumerate(argv):
+        if arg == "--workers" and index + 1 < len(argv):
+            raw = argv[index + 1]
+        elif arg.startswith("--workers="):
+            raw = arg.removeprefix("--workers=")
+    return int(raw) if raw.isdigit() else 1
+
+
 def startup_warnings(env: Mapping[str, str], argv: Sequence[str] = ()) -> list[str]:
     """Configuration worth a log line at startup. Names variables only, never their values.
 
@@ -115,6 +135,11 @@ def startup_warnings(env: Mapping[str, str], argv: Sequence[str] = ()) -> list[s
         )
     if not env.get(CALLS_ENV, "").strip() and not env.get(COST_ENV, "").strip():
         warnings.append(f"neither {CALLS_ENV} nor {COST_ENV} is set: AI spend is unlimited")
+    if _workers(env, argv) > 1:
+        warnings.append(
+            "several workers: backtests run one at a time per process, and a worker starting "
+            "one marks the others' running backtests failed; run a single worker"
+        )
     return warnings
 
 
@@ -124,6 +149,7 @@ async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
     A fresh service is built per startup, so start-stop-start works."""
     for warning in startup_warnings(os.environ, sys.argv):
         log.warning("%s", warning)
+    deps.sweep_interrupted_backtests()  # a backtest left running by a previous process
     if not _scheduler_enabled():
         yield
         return
@@ -160,5 +186,6 @@ for module in (
     journal,
     calendar,
     strategies,
+    backtests,
 ):  # registration order is the OpenAPI path order
     app.include_router(module.router)

@@ -345,6 +345,338 @@ export type AnalysisPage = {
 };
 
 /**
+ * BacktestCreate
+ *
+ * A backtest to run in the background. ``source`` is demo or mt5 only: the API never takes
+ * file paths. Without ``symbols`` the source's watchlist is used; duplicates are dropped.
+ */
+export type BacktestCreate = {
+    /**
+     * Strategy
+     */
+    strategy: string;
+    /**
+     * Source
+     */
+    source: 'mt5' | 'demo';
+    /**
+     * Tf
+     */
+    tf?: '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+    /**
+     * Bars
+     */
+    bars?: number;
+    /**
+     * Symbols
+     */
+    symbols?: Array<string> | null;
+    rules?: ExitRulesIn;
+    /**
+     * Split
+     */
+    split?: 'time' | 'symbols';
+    /**
+     * Train Fraction
+     */
+    train_fraction?: number;
+    /**
+     * Seed
+     */
+    seed?: number;
+    /**
+     * Stride
+     */
+    stride?: number;
+};
+
+/**
+ * BacktestList
+ */
+export type BacktestList = {
+    /**
+     * Items
+     */
+    items: Array<BacktestListItem>;
+};
+
+/**
+ * BacktestListItem
+ *
+ * A row of ``GET /backtests``: the badge figures plus how the run went. The full
+ * results are on ``GET /backtests/{id}``.
+ */
+export type BacktestListItem = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Strategy
+     */
+    strategy: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Verdict
+     */
+    verdict: 'pass' | 'fail' | 'insufficient' | null;
+    /**
+     * N
+     */
+    n: number | null;
+    /**
+     * Expectancy R
+     */
+    expectancy_r: number | null;
+    /**
+     * Ci Low
+     */
+    ci_low: number | null;
+    /**
+     * Ci High
+     */
+    ci_high: number | null;
+    /**
+     * Low Sample
+     */
+    low_sample: boolean | null;
+    /**
+     * Status
+     */
+    status: 'pending' | 'running' | 'done' | 'failed';
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Tf
+     */
+    tf: string;
+    /**
+     * Bars
+     */
+    bars: number;
+    /**
+     * Duration Seconds
+     */
+    duration_seconds: number | null;
+    /**
+     * Error
+     */
+    error: string | null;
+};
+
+/**
+ * BacktestOut
+ *
+ * One backtest row. ``status`` goes pending, running, then done or failed; ``results`` and
+ * ``verdict`` are set once done, ``error`` (a fixed message) once failed.
+ */
+export type BacktestOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Strategy
+     */
+    strategy: string;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Tf
+     */
+    tf: string;
+    /**
+     * Bars
+     */
+    bars: number;
+    /**
+     * Symbols
+     */
+    symbols: Array<string>;
+    rules: ExitRulesOut | null;
+    /**
+     * Split
+     */
+    split: string;
+    /**
+     * Train Fraction
+     */
+    train_fraction: number | null;
+    /**
+     * Seed
+     */
+    seed: number;
+    /**
+     * Stride
+     */
+    stride: number;
+    /**
+     * Status
+     */
+    status: 'pending' | 'running' | 'done' | 'failed';
+    /**
+     * Verdict
+     */
+    verdict: 'pass' | 'fail' | 'insufficient' | null;
+    /**
+     * Duration Seconds
+     */
+    duration_seconds: number | null;
+    /**
+     * Error
+     */
+    error: string | null;
+    results: BacktestResultsOut | null;
+};
+
+/**
+ * BacktestResultsOut
+ *
+ * The stored statistics: in-sample and out-of-sample, the null baselines on the
+ * out-of-sample part (keyed ``random`` and ``flipped``), and pooled over the whole run (only
+ * in CLI runs). Parts the run did not produce are null.
+ */
+export type BacktestResultsOut = {
+    pooled?: BacktestStatsOut | null;
+    in_sample?: BacktestStatsOut | null;
+    out_of_sample?: BacktestStatsOut | null;
+    /**
+     * Baselines
+     */
+    baselines?: {
+        [key: string]: BacktestStatsOut;
+    } | null;
+};
+
+/**
+ * BacktestStatsOut
+ *
+ * ``BacktestStats``: R-based statistics of the closed trades; ratios are null at n = 0.
+ */
+export type BacktestStatsOut = {
+    /**
+     * N
+     */
+    n: number;
+    /**
+     * N Open
+     */
+    n_open: number;
+    /**
+     * N Void
+     */
+    n_void: number;
+    /**
+     * Low Sample
+     */
+    low_sample: boolean;
+    /**
+     * Hit Rate
+     */
+    hit_rate: number | null;
+    /**
+     * Average R
+     */
+    average_r: number | null;
+    /**
+     * Expectancy R
+     */
+    expectancy_r: number | null;
+    /**
+     * Median R
+     */
+    median_r: number | null;
+    /**
+     * Best R
+     */
+    best_r: number | null;
+    /**
+     * Worst R
+     */
+    worst_r: number | null;
+    /**
+     * Total R
+     */
+    total_r: number | null;
+    /**
+     * Profit Factor
+     */
+    profit_factor: number | null;
+    /**
+     * Max Drawdown R
+     */
+    max_drawdown_r: number | null;
+    /**
+     * Avg Bars Held
+     */
+    avg_bars_held: number | null;
+    /**
+     * Ci Low
+     */
+    ci_low: number | null;
+    /**
+     * Ci High
+     */
+    ci_high: number | null;
+};
+
+/**
+ * BacktestSummaryOut
+ *
+ * The badge of a strategy's latest finished backtest: its verdict and the out-of-sample
+ * expectancy (the pooled one when the run had no out-of-sample part), with its interval.
+ */
+export type BacktestSummaryOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Strategy
+     */
+    strategy: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Verdict
+     */
+    verdict: 'pass' | 'fail' | 'insufficient' | null;
+    /**
+     * N
+     */
+    n: number | null;
+    /**
+     * Expectancy R
+     */
+    expectancy_r: number | null;
+    /**
+     * Ci Low
+     */
+    ci_low: number | null;
+    /**
+     * Ci High
+     */
+    ci_high: number | null;
+    /**
+     * Low Sample
+     */
+    low_sample: boolean | null;
+};
+
+/**
  * CalendarEventOut
  *
  * One scheduled release. Figures are null when the feed has none (yet).
@@ -586,6 +918,61 @@ export type ErrorResponse = {
      * Error
      */
     error: string;
+};
+
+/**
+ * ExitRulesIn
+ *
+ * How a signal becomes a trade, within ``ExitRules``'s limits. ``spread`` is in price
+ * units, paid once per trade.
+ */
+export type ExitRulesIn = {
+    /**
+     * Rr
+     */
+    rr?: number;
+    /**
+     * Stop Buffer Atr
+     */
+    stop_buffer_atr?: number;
+    /**
+     * Time Stop Bars
+     */
+    time_stop_bars?: number;
+    /**
+     * Spread
+     */
+    spread?: number;
+    /**
+     * Min Risk Atr
+     */
+    min_risk_atr?: number;
+};
+
+/**
+ * ExitRulesOut
+ */
+export type ExitRulesOut = {
+    /**
+     * Rr
+     */
+    rr: number;
+    /**
+     * Stop Buffer Atr
+     */
+    stop_buffer_atr: number;
+    /**
+     * Time Stop Bars
+     */
+    time_stop_bars: number;
+    /**
+     * Spread
+     */
+    spread: number;
+    /**
+     * Min Risk Atr
+     */
+    min_risk_atr: number;
 };
 
 /**
@@ -3011,3 +3398,222 @@ export type UpdateStrategyResponses = {
 };
 
 export type UpdateStrategyResponse = UpdateStrategyResponses[keyof UpdateStrategyResponses];
+
+export type ListBacktestsData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Strategy
+         */
+        strategy?: string | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/backtests';
+};
+
+export type ListBacktestsErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many backtest requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Backtest database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type ListBacktestsError = ListBacktestsErrors[keyof ListBacktestsErrors];
+
+export type ListBacktestsResponses = {
+    /**
+     * Successful Response
+     */
+    200: BacktestList;
+};
+
+export type ListBacktestsResponse = ListBacktestsResponses[keyof ListBacktestsResponses];
+
+export type CreateBacktestData = {
+    body: BacktestCreate;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/backtests';
+};
+
+export type CreateBacktestErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * Backtest already running
+     */
+    409: ErrorResponse;
+    /**
+     * Invalid request: e.g. the csv source, an unknown strategy, a symbol split with one symbol, or a run over the cost cap
+     */
+    422: ErrorResponse;
+    /**
+     * Too many backtests started; see Retry-After
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Backtest or strategy database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type CreateBacktestError = CreateBacktestErrors[keyof CreateBacktestErrors];
+
+export type CreateBacktestResponses = {
+    /**
+     * Accepted: the pending row; poll the Location header's URL
+     */
+    202: BacktestOut;
+};
+
+export type CreateBacktestResponse = CreateBacktestResponses[keyof CreateBacktestResponses];
+
+export type GetBacktestData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Backtest Id
+         */
+        backtest_id: number;
+    };
+    query?: never;
+    url: '/backtests/{backtest_id}';
+};
+
+export type GetBacktestErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No backtest with that id
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many backtest requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Backtest database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type GetBacktestError = GetBacktestErrors[keyof GetBacktestErrors];
+
+export type GetBacktestResponses = {
+    /**
+     * Successful Response
+     */
+    200: BacktestOut;
+};
+
+export type GetBacktestResponse = GetBacktestResponses[keyof GetBacktestResponses];
+
+export type GetStrategyBacktestData = {
+    body?: never;
+    headers?: {
+        /**
+         * X-Internal-Key
+         */
+        'X-Internal-Key'?: string | null;
+    };
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/strategies/{slug}/backtest';
+};
+
+export type GetStrategyBacktestErrors = {
+    /**
+     * Missing or wrong internal key
+     */
+    401: ErrorResponse;
+    /**
+     * No such strategy, or no finished backtest of it
+     */
+    404: ErrorResponse;
+    /**
+     * Invalid request
+     */
+    422: ErrorResponse;
+    /**
+     * Too many backtest requests; see the Retry-After header
+     */
+    429: ErrorResponse;
+    /**
+     * Internal server error
+     */
+    500: ErrorResponse;
+    /**
+     * Backtest database unavailable
+     */
+    503: ErrorResponse;
+};
+
+export type GetStrategyBacktestError = GetStrategyBacktestErrors[keyof GetStrategyBacktestErrors];
+
+export type GetStrategyBacktestResponses = {
+    /**
+     * Successful Response
+     */
+    200: BacktestSummaryOut;
+};
+
+export type GetStrategyBacktestResponse = GetStrategyBacktestResponses[keyof GetStrategyBacktestResponses];

@@ -165,6 +165,12 @@ def test_unknown_condition_raises_before_anything_loads(loader: TfLoader) -> Non
     assert loader.calls == []
 
 
+# The run store and the CLI share the database helpers (path, errors, schema version) of
+# ``ai.store`` with the other stores; nothing else in the package may reach ``ai``.
+SHARED_DB_MODULE = "smc_scanner.ai.store"
+DB_MODULES = frozenset({"store.py", "cli.py"})
+
+
 def test_backtest_package_imports_no_api_schedule_or_ai() -> None:
     forbidden = ("smc_scanner.api", "smc_scanner.schedule", "smc_scanner.ai")
     package = Path(backtest.__file__).parent
@@ -180,6 +186,8 @@ def test_backtest_package_imports_no_api_schedule_or_ai() -> None:
             else:
                 continue
             for name in names:
+                if path.name in DB_MODULES and name == SHARED_DB_MODULE:
+                    continue
                 assert not name.startswith(forbidden), f"{path.name} imports {name}"
 
 
