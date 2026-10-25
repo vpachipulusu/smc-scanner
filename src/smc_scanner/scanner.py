@@ -73,14 +73,19 @@ def latest_bar(ohlc: pd.DataFrame) -> tuple[float, str]:
 
 
 def zone_contexts(
-    symbol: str, ohlc: pd.DataFrame, options: ScanOptions, htf_bias: Bias | None = None
+    symbol: str,
+    ohlc: pd.DataFrame,
+    options: ScanOptions,
+    htf_bias: Bias | None = None,
+    *,
+    with_bos: bool = False,
 ) -> tuple[ZoneContext, ...]:
     """A context for every zone the latest candle is TOUCHING or NEAR (fresh only unless
-    ``options.all_touches``), in detection order."""
+    ``options.all_touches``), in detection order. ``with_bos`` fills ``structure.last_bos``."""
     if len(ohlc) < MIN_BARS:
         raise ValueError(f"{symbol}: need at least {MIN_BARS} candles, got {len(ohlc)}")
     swings = confirmed_swings(ohlc, options.swing_length)
-    structure = analyse_structure(ohlc, swings)
+    structure = analyse_structure(ohlc, swings, with_bos=with_bos)
     valid = tuple(
         evaluate_zones(ohlc, confirmed_swing_frame(ohlc, swings), structure.atr, options.near_atr)
     )

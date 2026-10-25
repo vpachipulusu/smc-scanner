@@ -82,11 +82,30 @@ HTF_ALIGNED_TOUCH: Final = Strategy(
     builtin=True,
 )
 
+VALID_OB: Final = Strategy(
+    slug="valid-ob",
+    name="Valid order block",
+    description=(
+        "First touch of an order block with the trend whose candle swept the prior candle's "
+        "low (high if bearish) and left an FVG right after it, scored on the last break of "
+        "structure pointing its way, OTE overlap, trendline hold and the higher timeframe."
+    ),
+    zone_kinds=("OB",),
+    swing_length=DEFAULT_SWING_LENGTH,
+    near_atr=DEFAULT_NEAR_ATR,
+    require=_refs("aligned", "fresh", "ob_swept_prior", "displacement_fvg"),
+    score=_refs("bos_confirmed", "in_ote", "trendline_ok", "htf_aligned"),
+    min_score=1,
+    statuses=("TOUCHING", "NEAR"),
+    builtin=True,
+)
+
 PRESETS: Final[tuple[Strategy, ...]] = (
     SMC_DEFAULT,
     FRESH_OB_TREND,
     FVG_OTE_REVERSAL,
     HTF_ALIGNED_TOUCH,
+    VALID_OB,
 )
 
 BUILTIN_STRATEGIES: Final[Mapping[str, Strategy]] = MappingProxyType(

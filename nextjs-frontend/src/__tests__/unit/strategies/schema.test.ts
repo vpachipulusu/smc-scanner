@@ -142,8 +142,14 @@ describe('strategyCreateSchema', () => {
 });
 
 describe('isBuiltinSlug', () => {
-  it('knows the four built-ins', () => {
-    const builtins = ['smc-default', 'fresh-ob-trend', 'fvg-ote-reversal', 'htf-aligned-touch'];
+  it('knows the five built-ins', () => {
+    const builtins = [
+      'smc-default',
+      'fresh-ob-trend',
+      'fvg-ote-reversal',
+      'htf-aligned-touch',
+      'valid-ob',
+    ];
     expect(builtins.every(isBuiltinSlug)).toBe(true);
     expect(isBuiltinSlug('my-setup')).toBe(false);
   });

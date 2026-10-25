@@ -1,8 +1,12 @@
-"""Market structure on the latest candle: ATR, confirmed swings, bias, OTE band, trendline.
+"""Market structure on the latest candle: ATR, confirmed swings, bias, OTE band, trendline
+and the last break of structure.
 
 All functions take an OHLC DataFrame with a RangeIndex and lower-case
 ``open/high/low/close`` columns (see ``loaders.base.normalise``).
 """
+
+from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -127,7 +131,40 @@ def trendline_value(ohlc: pd.DataFrame, swings: list[Swing], direction: Directio
     return second.level + slope * (last_index - second.index)
 
 
-def analyse_structure(ohlc: pd.DataFrame, swings: list[Swing]) -> Structure:
+@dataclass(frozen=True)
+class BreakOfStructure:
+    """A break of structure: its direction, the broken level and the candle that closed past it."""
+
+    direction: Literal["bullish", "bearish"]
+    level: float
+    index: int
+
+
+def last_break_of_structure(ohlc: pd.DataFrame, swings: list[Swing]) -> BreakOfStructure | None:
+    """The most recent close-confirmed break of structure over the confirmed ``swings``."""
+    if not swings:
+        return None
+    frame = smc.bos_choch(ohlc, confirmed_swing_frame(ohlc, swings), close_break=True)
+    broken = frame["BrokenIndex"].to_numpy(dtype=float)
+    kind = frame["BOS"].to_numpy(dtype=float)
+    reached = ~np.isnan(kind) & ~np.isnan(broken) & (broken > 0) & (broken < len(ohlc))
+    candidates = np.flatnonzero(reached)
+    if candidates.size == 0:
+        return None
+    position = int(candidates[np.argmax(broken[candidates])])
+    return BreakOfStructure(
+        direction="bullish" if kind[position] > 0 else "bearish",
+        level=float(frame["Level"].iloc[position]),
+        index=int(broken[position]),
+    )
+
+
+def analyse_structure(
+    ohlc: pd.DataFrame, swings: list[Swing], *, with_bos: bool = False
+) -> Structure:
+    """The structure on the latest candle. ``last_bos`` is found only ``with_bos`` (the library
+    loop costs about as much as the rest of a scan); otherwise it is None."""
+    last_bos = last_break_of_structure(ohlc, swings) if with_bos else None
     return Structure(
         atr=atr(ohlc),
         bias=bias_from_swings(swings),
@@ -135,4 +172,5 @@ def analyse_structure(ohlc: pd.DataFrame, swings: list[Swing]) -> Structure:
         ote_bearish=ote_band(ohlc, swings, BEARISH),
         trendline_bullish=trendline_value(ohlc, swings, BULLISH),
         trendline_bearish=trendline_value(ohlc, swings, BEARISH),
+        last_bos=None if last_bos is None else last_bos.direction,
     )
