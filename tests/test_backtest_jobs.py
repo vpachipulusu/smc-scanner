@@ -131,6 +131,7 @@ def test_the_real_runner_is_called_with_the_split_unpacked(
         "train_fraction": 0.6,
         "seed": 7,
         "stride": 2,
+        "lookback": None,  # the API never windows; the CLI's --lookback does
     }
 
 

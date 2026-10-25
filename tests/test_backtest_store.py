@@ -22,6 +22,7 @@ from smc_scanner.backtest.store import (
     SqliteBacktestRepository,
     without_signals,
 )
+from smc_scanner.config import MAX_BARS, MIN_BARS
 
 RULES = {"rr": 2.0, "stop_buffer_atr": 0.0, "time_stop_bars": 50, "spread": 0.0}
 
@@ -76,6 +77,20 @@ def test_insert_returns_the_pending_row_and_get_reads_it(repo: SqliteBacktestRep
     assert record.created_at == "2026-10-01T00:00:01+00:00"
     assert repo.get(record.id) == record
     assert repo.get(record.id + 1) is None
+
+
+def test_lookback_and_long_bars_round_trip(repo: SqliteBacktestRepository) -> None:
+    record = repo.insert(done(bars=121_940, lookback=500))
+
+    assert record.lookback == 500 and record.bars == 121_940
+    assert repo.get(record.id) == record
+    assert repo.list()[0].lookback == 500
+
+
+@pytest.mark.parametrize("lookback", [0, -1, MIN_BARS - 1, MAX_BARS + 1, True, 2.5])
+def test_insert_rejects_a_bad_lookback(repo: SqliteBacktestRepository, lookback: object) -> None:
+    with pytest.raises(ValueError, match="lookback"):
+        repo.insert(run(lookback=lookback))
 
 
 def test_status_moves_from_pending_to_running_to_done(repo: SqliteBacktestRepository) -> None:

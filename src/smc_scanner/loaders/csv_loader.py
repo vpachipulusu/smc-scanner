@@ -1,6 +1,9 @@
 """CSV loader: ``time, open, high, low, close[, volume]``; the symbol is the file path.
 
-Only the CLI and the watchlist feed paths to this loader; the API does not expose it.
+Only the CLI and the watchlist feed paths to this loader; the API does not expose it. ``load``
+keeps the last ``bars`` rows, as every loader does; ``read_all`` returns the whole file, for a
+caller that wants every candle (a backtest with a ``lookback`` window may replay more than
+``MAX_BARS``).
 """
 
 from pathlib import Path
@@ -12,6 +15,10 @@ from smc_scanner.loaders.base import LoaderError, normalise
 
 class CsvLoader:
     def load(self, symbol: str, timeframe: str, bars: int) -> pd.DataFrame:
+        return self.read_all(symbol).tail(bars).reset_index(drop=True)
+
+    def read_all(self, symbol: str) -> pd.DataFrame:
+        """Every candle in the file ``symbol`` names, oldest first, normalised."""
         path = Path(symbol)
         if not path.is_file():
             raise LoaderError(f"CSV file not found: {path}")
@@ -30,7 +37,7 @@ class CsvLoader:
         raw["time"] = pd.to_datetime(raw["time"], errors="coerce")
         if raw["time"].isna().any():
             raise LoaderError(f"{path}: unparseable timestamps in 'time'")
-        return normalise(raw).tail(bars).reset_index(drop=True)
+        return normalise(raw)
 
     def close(self) -> None:
         return None

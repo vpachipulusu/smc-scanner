@@ -35,7 +35,7 @@ from smc_scanner.backtest.replay import Signal, ZoneKey
 from smc_scanner.backtest.stats import BacktestStats, summarise
 from smc_scanner.config import MIN_BARS
 from smc_scanner.models import BEARISH, BULLISH, Direction, ScanRow, ZoneKind
-from smc_scanner.structure import atr as average_true_range
+from smc_scanner.structure import atr_at
 
 RANDOM_SYMBOL: Final = "random"  # the instrument count-only random signals report
 RANDOM_STRATEGY: Final = "baseline-random"
@@ -53,15 +53,11 @@ def _close(ohlc: pd.DataFrame, index: int) -> float:
     return float(ohlc["close"].iloc[index])
 
 
-def _bar_atr(ohlc: pd.DataFrame, index: int) -> float:
-    return average_true_range(ohlc.iloc[: index + 1])
-
-
 def _stop_distance(ohlc: pd.DataFrame, signal: Signal) -> float:
     """How far the strategy put its far edge from the close, in the signal bar's ATR."""
     close = _close(ohlc, signal.bar_index)
     edge = signal.zone.bottom if signal.direction == BULLISH else signal.zone.top
-    return max(0.0, signal.direction * (close - edge) / _bar_atr(ohlc, signal.bar_index))
+    return max(0.0, signal.direction * (close - edge) / atr_at(ohlc, signal.bar_index))
 
 
 _Shape = tuple[Direction, float, ZoneKind]  # direction, far-edge distance in ATR, zone kind
@@ -101,7 +97,7 @@ def _symbol(signals_or_n: SignalsOrCount) -> str:
 def _random_signal(ohlc: pd.DataFrame, index: int, shape: _Shape, symbol: str) -> Signal:
     direction, distance, kind = shape
     close = _close(ohlc, index)
-    width = distance * _bar_atr(ohlc, index)
+    width = distance * atr_at(ohlc, index)
     low, high = (close - width, close) if direction == BULLISH else (close, close + width)
     bar_time = str(ohlc["time"].iloc[index])
     row = ScanRow(

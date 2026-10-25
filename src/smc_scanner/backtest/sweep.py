@@ -51,6 +51,7 @@ class SweepPoint:
     random_baseline: BacktestStats
     flipped_baseline: BacktestStats
     failures: tuple[ScanFailure, ...]
+    lookback: int | None = None  # bars each replay step scanned; None: the whole prefix
 
     def to_dict(self) -> dict[str, object]:
         """Strict-JSON data: a non-finite float becomes None; ``params`` is an object."""
@@ -58,6 +59,7 @@ class SweepPoint:
             {
                 "params": dict(self.params),
                 "n_variants": self.n_variants,
+                "lookback": self.lookback,
                 "verdict": self.verdict,
                 "out_of_sample": asdict(self.out_of_sample),
                 "random_baseline": asdict(self.random_baseline),
@@ -158,11 +160,12 @@ def sweep(
     options: ScanOptions | None = None,
     seed: int = 0,
     stride: int = 1,
+    lookback: int | None = None,
 ) -> tuple[SweepPoint, ...]:
-    """Walk-forward every ``sweep_variants`` variant with the same split and seed. Every
-    argument is checked before anything loads."""
+    """Walk-forward every ``sweep_variants`` variant with the same split, seed and
+    ``lookback``. Every argument is checked before anything loads."""
     variants = sweep_variants(strategy, condition, grid)
-    check_walk_forward_args(bars, seed, stride, strategy, split, train_fraction)
+    check_walk_forward_args(bars, seed, stride, strategy, split, train_fraction, lookback=lookback)
     targets = distinct_symbols(symbols)
     cached = _CachedLoader(loader)
     points: list[SweepPoint] = []
@@ -179,6 +182,7 @@ def sweep(
             options=options,
             seed=seed,
             stride=stride,
+            lookback=lookback,
         )
         points.append(
             SweepPoint(
@@ -189,6 +193,7 @@ def sweep(
                 random_baseline=result.random_baseline,
                 flipped_baseline=result.flipped_baseline,
                 failures=result.failures,
+                lookback=lookback,
             )
         )
     return tuple(points)
